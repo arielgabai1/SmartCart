@@ -2,17 +2,17 @@ project: "Smart Cart (Israel Budget Guard)"
 version: "1.0"
 methodology: "BMad-Fullstack"
 current_sprint: 1
-overall_progress: 0%
+overall_progress: 5%
 
 # Tracked against Architecture v1.0 and PRD v1.0
 epics:
   - id: 1
     title: "Project Setup & Foundation"
-    status: "NOT_STARTED" # [NOT_STARTED, IN_PROGRESS, DONE]
+    status: "IN_PROGRESS" # [NOT_STARTED, IN_PROGRESS, DONE]
     stories:
       - id: "1.1"
         title: "Multi-Container Orchestration"
-        done: false
+        done: true
       - id: "1.2"
         title: "Nginx Reverse Proxy"
         done: false

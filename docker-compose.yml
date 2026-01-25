@@ -1,0 +1,31 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - shop-net
+
+  backend:
+    build: ./backend
+    ports:
+      - "8081:8081"
+    environment:
+      - MONGO_URI=mongodb://database:27017/smart-shop
+    depends_on:
+      - database
+    networks:
+      - shop-net
+
+  database:
+    image: mongo:6.0
+    volumes:
+      - ./data:/data/db
+    networks:
+      - shop-net
+
+networks:
+  shop-net:
+    driver: bridge
