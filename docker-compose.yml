@@ -5,6 +5,7 @@ services:
       - "80:80"
     depends_on:
       - backend
+    restart: on-failure
     networks:
       - shop-net
 
@@ -16,6 +17,7 @@ services:
       - MONGO_URI=mongodb://database:27017/smart-shop
     depends_on:
       - database
+    restart: on-failure
     networks:
       - shop-net
 
@@ -23,6 +25,7 @@ services:
     image: mongo:6.0
     volumes:
       - ./data:/data/db
+    restart: on-failure
     networks:
       - shop-net
 

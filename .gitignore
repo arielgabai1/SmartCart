@@ -65,3 +65,5 @@ htmlcov/
 .claude
 *.claude_session
 *_bmad*
+.gemini*
+.agent*
