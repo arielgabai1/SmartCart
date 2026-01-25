@@ -1,0 +1,111 @@
+project: "Smart Cart (Israel Budget Guard)"
+version: "1.0"
+methodology: "BMad-Fullstack"
+current_sprint: 1
+overall_progress: 0%
+
+# Tracked against Architecture v1.0 and PRD v1.0
+epics:
+  - id: 1
+    title: "Project Setup & Foundation"
+    status: "NOT_STARTED" # [NOT_STARTED, IN_PROGRESS, DONE]
+    stories:
+      - id: "1.1"
+        title: "Multi-Container Orchestration"
+        done: false
+      - id: "1.2"
+        title: "Nginx Reverse Proxy"
+        done: false
+      - id: "1.3"
+        title: "Secrets Bootstrap"
+        done: false
+
+  - id: 2
+    title: "Backend API Scaffolding"
+    status: "NOT_STARTED"
+    stories:
+      - id: "2.1"
+        title: "Dual-Port Flask Setup"
+        done: false
+      - id: "2.2"
+        title: "Base JSON Routing"
+        done: false
+
+  - id: 3
+    title: "Database Layer"
+    status: "NOT_STARTED"
+    stories:
+      - id: "3.1"
+        title: "MongoDB Persistence"
+        done: false
+      - id: "3.2"
+        title: "Item Schema Implementation"
+        done: false
+
+  - id: 4
+    title: "Backend CRUD Operations"
+    status: "NOT_STARTED"
+    stories:
+      - id: "4.1"
+        title: "POST /api/items"
+        done: false
+      - id: "4.2"
+        title: "GET /api/items"
+        done: false
+
+  - id: 5
+    title: "Frontend Core UI"
+    status: "NOT_STARTED"
+    stories:
+      - id: "5.1"
+        title: "Persona View Switcher"
+        done: false
+      - id: "5.2"
+        title: "Layout Skeleton"
+        done: false
+
+  - id: 6
+    title: "Frontend-Backend Integration"
+    status: "NOT_STARTED"
+    stories:
+      - id: "6.1"
+        title: "Aggressive Polling Engine"
+        done: false
+      - id: "6.2"
+        title: "POST Integration"
+        done: false
+
+  - id: 7
+    title: "Validation & AI Error Handling"
+    status: "NOT_STARTED"
+    stories:
+      - id: "7.1"
+        title: "OpenAI Async Pricing Hook"
+        done: false
+      - id: "7.2"
+        title: "AI Fallback Logic"
+        done: false
+
+  - id: 8
+    title: "Testing & Quality"
+    status: "NOT_STARTED"
+    stories:
+      - id: "8.1"
+        title: "API Integration Tests"
+        done: false
+
+  - id: 9
+    title: "Metrics & Documentation"
+    status: "NOT_STARTED"
+    stories:
+      - id: "9.1"
+        title: "Prometheus /metrics"
+        done: false
+      - id: "9.2"
+        title: "Startup Guide"
+        done: false
+
+blockers: []
+risks:
+  - "OpenAI API Latency impacting UI feedback loop"
+  - "Nginx configuration conflicts on Port 80"

@@ -1,0 +1,15 @@
+# Epic 5: Frontend Core UI
+**Status:** Ready | **PRD Ref:** Section 2 (Personas)
+
+## Technical Blueprint
+- **Tech Stack:** Vanilla HTML/CSS/JS (No build tools).
+- **Design:** Shared list view with conditional buttons (Approve/Reject) visible only to "CFO".
+
+## Stories & Specs
+### 5.1 Persona View Switcher
+- **Action:** Implement a toggle to simulate "CFO" vs "Requestor" mode.
+- **AC:** Approve/Reject buttons hidden in "Requestor" mode.
+
+### 5.2 Layout Skeleton
+- **Action:** Create `frontend/src/index.html`. 
+- **AC:** Renders item list container and "Add Item" form.

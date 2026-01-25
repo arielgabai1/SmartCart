@@ -1,0 +1,16 @@
+# Epic 3: Database Layer
+**Status:** Depends on Epic 1 | **PRD Ref:** Section 4 (Persistence)
+
+## Technical Blueprint
+- **Storage:** MongoDB. 
+- **Persistence:** Host volume mapping `./data/db` to `/data/db`.
+- **Schema (Arch 4.1):** `name` (Str), `user_role` (KID/CFO), `price` (Float), `status` (PENDING/APPROVED/REJECTED/ERROR).
+
+## Stories & Specs
+### 3.1 Mongo Volume Persistence
+- **Action:** Update `docker-compose.yml` with volume mapping.
+- **AC:** Documents persist after `docker-compose down`.
+
+### 3.2 Database Connection Helper
+- **Action:** Create `backend/src/db.py` using `pymongo`. 
+- **AC:** Successfully inserts a test item into the `items` collection.

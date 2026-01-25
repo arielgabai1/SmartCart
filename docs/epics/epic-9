@@ -1,0 +1,15 @@
+# Epic 9: Metrics & Documentation
+**Status:** Final Phase | **PRD Ref:** FR-11, FR-12 | **Arch Ref:** 4.1
+
+## Technical Blueprint
+- **Exporter:** `prometheus_client` library.
+- **Port:** 8081.
+
+## Stories & Specs
+### 9.1 AI Latency Tracking
+- **Action:** Define `Histogram` metric for OpenAI response time.
+- **AC:** `/metrics` shows `ai_latency_seconds_count` and `sum`.
+
+### 9.2 README Finalization
+- **Action:** Document startup instructions: `docker-compose up --build`.
+- **AC:** New users can launch the app in < 2 mins.

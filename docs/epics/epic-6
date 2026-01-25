@@ -1,0 +1,15 @@
+# Epic 6: Frontend-Backend Integration
+**Status:** Depends on Epic 4 & 5 | **Arch Ref:** Section 3 (Polling)
+
+## Technical Blueprint
+- **Sync Strategy:** Aggressive Polling.
+- **URL Standard:** Use relative paths (`/api/items`) to leverage Nginx proxy.
+
+## Stories & Specs
+### 6.1 Polling Engine
+- **Action:** `setInterval(fetchItems, 3000)`.
+- **AC:** UI refreshes list without user interaction.
+
+### 6.2 POST Integration
+- **Action:** Wire "Add" button to `fetch('/api/items', {method: 'POST'})`.
+- **AC:** Form submission adds item to database.
