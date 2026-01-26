@@ -1,16 +1,18 @@
 services:
   frontend:
     build: ./frontend
+    container_name: nginx
     ports:
       - "80:80"
     depends_on:
       - backend
     restart: on-failure
     networks:
-      - shop-net
+      - frontend-net
 
   backend:
     build: ./backend
+    container_name: SmartCart
     ports:
       - "8081:8081"
     environment:
@@ -19,16 +21,23 @@ services:
       - database
     restart: on-failure
     networks:
-      - shop-net
+    - frontend-net
+    - backend-net
 
   database:
-    image: mongo:6.0
+    image: mongo:8.2
+    container_name: mongodb
     volumes:
-      - ./data:/data/db
+      - mongodb_data:/data/db
     restart: on-failure
     networks:
-      - shop-net
+    - backend-net
+
+volumes:
+  mongodb_data:
 
 networks:
-  shop-net:
+  frontend-net:
+    driver: bridge
+  backend-net:
     driver: bridge
