@@ -18,4 +18,4 @@
 
 ### 1.3 Environment Bootstrap
 - **Action:** Create `.env` and `.env.example`. 
-- **Variables:** `OPENAI_API_KEY`, `MONGO_URI=mongodb://database:27017/smart-shop`.
+- **Variables:** `OPENAI_API_KEY`, `MONGO_URI=mongodb://database:27017/smartcart`.

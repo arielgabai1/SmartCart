@@ -29,7 +29,7 @@ logger = setup_logging()
 
 # MongoDB Connection with Retry Loop (5 attempts)
 def get_db_connection(max_retries=5, retry_delay=2):
-    mongo_uri = os.getenv('MONGO_URI', 'mongodb://database:27017/smart-shop')
+    mongo_uri = os.getenv('MONGO_URI', 'mongodb://database:27017/smartcart')
 
     for attempt in range(1, max_retries + 1):
         try:
