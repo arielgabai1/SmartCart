@@ -1,19 +1,20 @@
 import logging
-import os
 import sys
 import threading
-import time
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from prometheus_client import make_wsgi_app, Counter, Histogram
-from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from bson import ObjectId
 from bson.errors import InvalidId
 from pythonjsonlogger import jsonlogger
 from werkzeug.exceptions import BadRequest
 from werkzeug.serving import run_simple
+
+import db
+from db import get_db
+from models import validate_item, item_to_dict
 
 # JSON Logging Configuration
 def setup_logging():
@@ -30,33 +31,8 @@ def setup_logging():
 
 logger = setup_logging()
 
-# Constants
-DEFAULT_PRICE_NIS = 0.0
-MAX_ITEM_NAME_LENGTH = 200
-VALID_USER_ROLES = ['PARENT', 'KID']
-VALID_STATUSES = ['PENDING', 'APPROVED', 'REJECTED']
-
-# MongoDB Connection with Retry Loop (5 attempts)
-def get_db_connection(max_retries=5, retry_delay=2):
-    mongo_uri = os.getenv('MONGO_URI', 'mongodb://database:27017/smartcart')
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-            client.admin.command('ping')
-            logger.info('MongoDB connection established', extra={'attempt': attempt})
-            return client
-        except ConnectionFailure as e:
-            logger.warning(
-                'MongoDB connection failed, retrying...',
-                extra={'attempt': attempt, 'max_retries': max_retries, 'error': str(e)}
-            )
-            if attempt < max_retries:
-                time.sleep(retry_delay)
-            else:
-                logger.error('MongoDB connection failed after max retries')
-                raise
-    return None
+# Import constants from models for backward compatibility
+from models import VALID_STATUSES
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -66,24 +42,13 @@ CORS(app)
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency')
 
-# Lazy DB initialization
-db_client = None
-db = None
-
-def get_db():
-    global db_client, db
-    if db_client is None:
-        db_client = get_db_connection()
-        db = db_client.get_database()
-    return db
-
 @app.route('/health')
 def health():
     REQUEST_COUNT.labels(method='GET', endpoint='/health').inc()
     try:
-        if db_client:
-            db_client.admin.command('ping')
-        return jsonify({'status': 'healthy', 'service': 'backend', 'db': 'connected' if db_client else 'not_initialized'})
+        if db.db_client:
+            db.db_client.admin.command('ping')
+        return jsonify({'status': 'healthy', 'service': 'backend', 'db': 'connected' if db.db_client else 'not_initialized'})
     except Exception as e:
         logger.error('Health check failed', extra={'error': str(e)})
         return jsonify({'status': 'unhealthy', 'service': 'backend', 'error': str(e)}), 503
@@ -93,10 +58,8 @@ def health():
 def get_items():
     REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()
     try:
-        db = get_db()
-        items = list(db['items'].find())
-        for item in items:
-            item['_id'] = str(item['_id'])
+        database = get_db()
+        items = [item_to_dict(item) for item in database['items'].find()]
         logger.info('Items retrieved', extra={'count': len(items), 'endpoint': '/api/items'})
         return jsonify(items), 200
     except ConnectionFailure as e:
@@ -115,36 +78,27 @@ def create_item():
         if not data:
             return jsonify({'error': 'Invalid JSON payload', 'details': 'Request body must be valid JSON'}), 400
 
-        required_fields = ['name', 'user_role']
-        missing = [f for f in required_fields if f not in data]
-        if missing:
-            return jsonify({'error': 'Missing required fields', 'details': f'Missing: {", ".join(missing)}'}), 400
+        # Use schema validation from models.py
+        validated_item, errors = validate_item(data)
 
-        # Validate name is not empty or whitespace
-        if not data['name'] or not data['name'].strip():
-            return jsonify({'error': 'Invalid name', 'details': 'Name cannot be empty or whitespace'}), 400
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
-        # Validate name length
-        if len(data['name']) > MAX_ITEM_NAME_LENGTH:
-            return jsonify({'error': 'Invalid name', 'details': f'Name cannot exceed {MAX_ITEM_NAME_LENGTH} characters'}), 400
+        # Preserve ai_status if present in request (for backward compatibility)
+        if 'ai_status' in data:
+            validated_item['ai_status'] = data['ai_status']
 
-        # Validate user_role
-        if data['user_role'] not in VALID_USER_ROLES:
-            return jsonify({'error': 'Invalid user_role', 'details': f'Must be one of: {", ".join(VALID_USER_ROLES)}'}), 400
+        database = get_db()
+        result = database['items'].insert_one(validated_item)
+        validated_item['_id'] = str(result.inserted_id)
 
-        new_item = {
-            'name': data['name'].strip(),
-            'user_role': data['user_role'],
-            'status': 'PENDING',
-            'ai_status': 'CALCULATING',
-            'price_nis': DEFAULT_PRICE_NIS
-        }
+        logger.info('Item created', extra={
+            'item_id': str(result.inserted_id),
+            'item_name': validated_item['name'],
+            'family_id': validated_item.get('family_id')
+        })
 
-        db = get_db()
-        result = db['items'].insert_one(new_item)
-        new_item['_id'] = str(result.inserted_id)
-        logger.info('Item created', extra={'item_id': new_item['_id'], 'item_name': new_item['name']})
-        return jsonify(new_item), 201
+        return jsonify(item_to_dict(validated_item)), 201
     except BadRequest as e:
         return jsonify({'error': 'Invalid JSON payload', 'details': str(e)}), 400
     except ConnectionFailure as e:
@@ -174,15 +128,14 @@ def update_item(item_id):
         if data['status'] not in VALID_STATUSES:
             return jsonify({'error': 'Invalid status', 'details': f'Must be one of: {", ".join(VALID_STATUSES)}'}), 400
 
-        db = get_db()
-        result = db['items'].update_one({'_id': obj_id}, {'$set': {'status': data['status']}})
+        database = get_db()
+        result = database['items'].update_one({'_id': obj_id}, {'$set': {'status': data['status']}})
         if result.matched_count == 0:
             return jsonify({'error': 'Item not found', 'details': f'No item with ID: {item_id}'}), 404
 
-        updated_item = db['items'].find_one({'_id': obj_id})
-        updated_item['_id'] = str(updated_item['_id'])
+        updated_item = database['items'].find_one({'_id': obj_id})
         logger.info('Item updated', extra={'item_id': item_id, 'status': data['status']})
-        return jsonify(updated_item), 200
+        return jsonify(item_to_dict(updated_item)), 200
     except BadRequest as e:
         return jsonify({'error': 'Invalid JSON payload', 'details': str(e)}), 400
     except ConnectionFailure as e:

@@ -33,14 +33,14 @@ epics:
 
   - id: 3
     title: "Database Layer"
-    status: "IN_PROGRESS"
+    status: "DONE"
     stories:
       - id: "3.1"
         title: "MongoDB Persistence"
         done: true
       - id: "3.2"
         title: "Item Schema Implementation"
-        done: false
+        done: true
 
   - id: 4
     title: "Backend CRUD Operations"
