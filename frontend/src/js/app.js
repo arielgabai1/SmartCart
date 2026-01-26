@@ -27,6 +27,7 @@ const AuthService = {
             const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
             return payload;
         } catch (e) {
+            console.error('JWT parse error:', e);
             return null;
         }
     },
@@ -247,8 +248,6 @@ async function syncUserIdentity() {
 
             // Full UI reset to update sidebar, buttons, and sections
             initUI();
-            renderItems();
-            fetchMembers(true);
 
             // Force re-check of pending section visibility with fresh role AND count
             const pendingCount = STATE.items.filter(i => i.status === 'PENDING').length;
@@ -257,6 +256,7 @@ async function syncUserIdentity() {
                 container.style.display = (freshUser.role === 'MANAGER' && pendingCount > 0) ? 'block' : 'none';
             }
 
+            // Single render call after all UI state is updated
             renderItems();
 
             // If we gained Manager access, fetch members immediately

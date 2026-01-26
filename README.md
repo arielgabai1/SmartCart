@@ -29,18 +29,21 @@ SmartCart is a web application that allows team/group members to collaboratively
 ## Quick Start
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd SmartCart
    ```
 
 2. **Configure environment variables**
+
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
 3. **Start the application**
+
    ```bash
    docker-compose up -d
    ```
@@ -57,15 +60,16 @@ SmartCart is a web application that allows team/group members to collaboratively
 SmartCart uses Docker named volumes to persist MongoDB data across container restarts. The configuration in `docker-compose.yml` ensures your grocery list data is never lost.
 
 **Volume Setup:**
+
 ```yaml
 services:
   database:
     volumes:
-      - mongodb_data:/data/db  # Named volume mounted to MongoDB data directory
+      - mongodb_data:/data/db # Named volume mounted to MongoDB data directory
 
 volumes:
   mongodb_data:
-    driver: local  # Docker-managed local volume
+    driver: local # Docker-managed local volume
 ```
 
 ### Data Persistence Behavior
@@ -142,22 +146,26 @@ scp mongodb-backup-YYYYMMDD-HHMMSS.tar.gz user@newhost:/path/to/SmartCart/
 ### Volume Inspection
 
 #### List Volumes
+
 ```bash
 docker volume ls
 ```
 
 #### Inspect Volume Details
+
 ```bash
 docker volume inspect smartcart_mongodb_data
 ```
 
 Output includes:
+
 - Volume name
 - Mount point on host
 - Driver
 - Created timestamp
 
 #### Inspect Volume Contents
+
 ```bash
 # List files in volume
 docker run --rm \
@@ -171,6 +179,7 @@ docker run --rm \
 ```
 
 Expected files in MongoDB volume:
+
 - `WiredTiger*` - Storage engine files
 - `collection-*.wt` - Collection data files
 - `index-*.wt` - Index files
@@ -183,6 +192,7 @@ Expected files in MongoDB volume:
 **Symptom:** Data disappears after restarting containers.
 
 **Diagnosis:**
+
 1. Check volume is mounted:
    ```bash
    docker inspect mongodb | grep -A 10 Mounts
@@ -191,6 +201,7 @@ Expected files in MongoDB volume:
 3. Ensure volume name matches in both service and volumes sections
 
 **Solution:**
+
 - Verify `docker-compose.yml` volume configuration
 - Check that you're not using `docker-compose down -v` which removes volumes
 
@@ -199,11 +210,13 @@ Expected files in MongoDB volume:
 **Symptom:** MongoDB fails to start with permission errors.
 
 **Diagnosis:**
+
 ```bash
 docker logs mongodb
 ```
 
 **Solution:**
+
 - Named volumes automatically handle permissions (MongoDB runs as UID 999)
 - If using bind mounts (not recommended), fix with:
   ```bash
@@ -215,6 +228,7 @@ docker logs mongodb
 **Symptom:** MongoDB writes fail, disk space errors.
 
 **Diagnosis:**
+
 ```bash
 # Check disk usage
 df -h
@@ -224,6 +238,7 @@ docker system df -v
 ```
 
 **Solution:**
+
 - Clean up unused volumes: `docker volume prune`
 - Clean up unused images: `docker image prune`
 - Monitor disk usage with Prometheus metrics
@@ -233,6 +248,7 @@ docker system df -v
 **Symptom:** Backend shows connection errors after restart.
 
 **Diagnosis:**
+
 ```bash
 # Check MongoDB logs
 docker logs mongodb
@@ -242,6 +258,7 @@ docker logs SmartCart
 ```
 
 **Solution:**
+
 - SmartCart has built-in retry logic (5 attempts, 2s delay)
 - Wait 10-15 seconds for MongoDB to fully start
 - Verify health endpoint: `curl http://localhost:5001/health`
@@ -251,6 +268,7 @@ docker logs SmartCart
 **Symptom:** Volume exists but data is missing.
 
 **Diagnosis:**
+
 ```bash
 # Check if volume has data
 docker run --rm \
@@ -262,6 +280,7 @@ docker inspect mongodb | grep -A 10 Mounts
 ```
 
 **Solution:**
+
 - Verify volume name hasn't changed
 - Check if wrong volume is mounted
 - Restore from backup if data is truly lost
@@ -296,6 +315,7 @@ python -m pytest tests/integration/ -v
 ```
 
 Integration tests verify:
+
 - Data persists after MongoDB container restart
 - Data persists after full stack restart
 - Volume contains MongoDB data files
@@ -315,6 +335,7 @@ python -m pytest -v --cov=src --cov-report=term-missing
 ### Local Setup (without Docker)
 
 1. **Install dependencies**
+
    ```bash
    cd backend
    python -m venv venv
@@ -323,6 +344,7 @@ python -m pytest -v --cov=src --cov-report=term-missing
    ```
 
 2. **Run MongoDB locally**
+
    ```bash
    # Using Docker
    docker run -d -p 27017:27017 --name mongodb-dev mongo:8.2
@@ -365,6 +387,7 @@ curl http://localhost:5001/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "healthy",
@@ -378,6 +401,7 @@ Expected response:
 Access metrics at: http://localhost:8081/metrics
 
 Available metrics:
+
 - `http_requests_total` - Total HTTP requests by method and endpoint
 - `http_request_duration_seconds` - Request latency histogram
 
@@ -386,6 +410,7 @@ Available metrics:
 SmartCart uses `family_id` for data isolation. All MongoDB queries must include `family_id` to ensure proper tenant isolation.
 
 **Example:**
+
 ```python
 db['items'].find({'family_id': family_id})
 ```
