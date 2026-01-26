@@ -3,7 +3,7 @@ Data models and validation logic for Smart Cart.
 
 Provides schema validation for Items with multi-tenancy support via family_id.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Tuple
 
 
@@ -37,6 +37,7 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
         - user_role: Optional, must be PARENT or KID if provided
         - status: Optional, defaults to PENDING
         - price_nis: Optional, defaults to 0.0
+        - ai_status: Optional, arbitrary string (for now)
         - created_at: Auto-generated if not provided
     """
     errors = []
@@ -83,9 +84,14 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     else:
         validated['price_nis'] = DEFAULT_PRICE_NIS
 
+    # Optional: ai_status
+    if 'ai_status' in data:
+        validated['ai_status'] = data['ai_status']
+
     # Auto-generate created_at if not provided
     if 'created_at' not in data:
-        validated['created_at'] = datetime.utcnow()
+        # Use timezone-aware UTC
+        validated['created_at'] = datetime.now(timezone.utc)
     else:
         validated['created_at'] = data['created_at']
 

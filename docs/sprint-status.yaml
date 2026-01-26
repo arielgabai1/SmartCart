@@ -44,11 +44,11 @@ epics:
 
   - id: 4
     title: "Backend CRUD Operations"
-    status: "NOT_STARTED"
+    status: "IN_PROGRESS"
     stories:
       - id: "4.1"
         title: "POST /api/items"
-        done: false
+        done: true
       - id: "4.2"
         title: "GET /api/items"
         done: false

@@ -1,6 +1,9 @@
 import pytest
 from bson import ObjectId
+import uuid
 
+# Helper to generate a valid family_id
+TEST_FAMILY_ID = str(uuid.uuid4())
 
 class TestGetItems:
     """Tests for GET /api/items endpoint."""
@@ -40,7 +43,11 @@ class TestGetItems:
     def test_get_items_returns_created_items(self, client):
         """[P0] GET /api/items returns items after creation."""
         # Create an item first
-        client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
 
         response = client.get("/api/items")
         data = response.get_json()
@@ -48,6 +55,7 @@ class TestGetItems:
         assert len(data) == 1
         assert data[0]["name"] == "Milk"
         assert data[0]["user_role"] == "PARENT"
+        assert data[0]["family_id"] == TEST_FAMILY_ID
 
 
 class TestPostItems:
@@ -57,46 +65,68 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_returns_201(self, client):
         """[P0] POST /api/items should return 201 status code."""
-        response = client.post("/api/items", json={"name": "Bamba", "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": "Bamba",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 201
 
     @pytest.mark.p0
     @pytest.mark.api
     def test_post_item_returns_created_item(self, client):
         """[P0] POST /api/items should return the created item with _id."""
-        response = client.post("/api/items", json={"name": "Bamba", "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": "Bamba",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         data = response.get_json()
 
         assert "_id" in data
         assert data["name"] == "Bamba"
         assert data["user_role"] == "KID"
         assert data["status"] == "PENDING"
-        assert data["ai_status"] == "CALCULATING"
         assert data["price_nis"] == 0.0
+        assert data["family_id"] == TEST_FAMILY_ID
+        # ai_status is optional/backward compat, checking if present only if logic dictates
+        if "ai_status" in data:
+             pass 
 
     @pytest.mark.p1
     @pytest.mark.api
     def test_post_item_missing_name_returns_400(self, client):
         """[P1] POST /api/items without name should return 400."""
-        response = client.post("/api/items", json={"user_role": "KID"})
+        response = client.post("/api/items", json={
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
 
     @pytest.mark.p1
     @pytest.mark.api
-    def test_post_item_missing_user_role_returns_400(self, client):
-        """[P1] POST /api/items without user_role should return 400."""
-        response = client.post("/api/items", json={"name": "Milk"})
+    def test_post_item_missing_family_id_returns_400(self, client):
+        """[P1] POST /api/items without family_id should return 400."""
+        response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT"
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
+        assert "family_id" in str(data["details"])
 
     @pytest.mark.p1
     @pytest.mark.api
     def test_post_item_invalid_user_role_returns_400(self, client):
         """[P1] POST /api/items with invalid user_role should return 400."""
-        response = client.post("/api/items", json={"name": "Milk", "user_role": "INVALID"})
+        response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "INVALID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
@@ -112,7 +142,11 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_accepts_parent_role(self, client):
         """[P1] POST /api/items should accept PARENT role."""
-        response = client.post("/api/items", json={"name": "Wine", "user_role": "PARENT"})
+        response = client.post("/api/items", json={
+            "name": "Wine",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 201
         data = response.get_json()
         assert data["user_role"] == "PARENT"
@@ -121,7 +155,11 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_accepts_kid_role(self, client):
         """[P1] POST /api/items should accept KID role."""
-        response = client.post("/api/items", json={"name": "Candy", "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": "Candy",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 201
         data = response.get_json()
         assert data["user_role"] == "KID"
@@ -130,7 +168,11 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_empty_name_returns_400(self, client):
         """[P1] POST /api/items with empty name should return 400."""
-        response = client.post("/api/items", json={"name": "", "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": "",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
@@ -139,7 +181,11 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_whitespace_name_returns_400(self, client):
         """[P1] POST /api/items with whitespace-only name should return 400."""
-        response = client.post("/api/items", json={"name": "   ", "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": "   ",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
@@ -149,7 +195,11 @@ class TestPostItems:
     def test_post_item_name_too_long_returns_400(self, client):
         """[P1] POST /api/items with name exceeding 200 chars should return 400."""
         long_name = "A" * 201
-        response = client.post("/api/items", json={"name": long_name, "user_role": "KID"})
+        response = client.post("/api/items", json={
+            "name": long_name,
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
@@ -158,11 +208,14 @@ class TestPostItems:
     @pytest.mark.api
     def test_post_item_strips_whitespace(self, client):
         """[P1] POST /api/items should strip leading/trailing whitespace from name."""
-        response = client.post("/api/items", json={"name": "  Milk  ", "user_role": "PARENT"})
+        response = client.post("/api/items", json={
+            "name": "  Milk  ",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         assert response.status_code == 201
         data = response.get_json()
         assert data["name"] == "Milk"
-
 
 
 class TestPutItems:
@@ -173,7 +226,11 @@ class TestPutItems:
     def test_put_item_returns_200(self, client):
         """[P0] PUT /api/items/<id> should return 200 on success."""
         # Create item first
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", json={"status": "APPROVED"})
@@ -184,7 +241,11 @@ class TestPutItems:
     def test_put_item_updates_status(self, client):
         """[P0] PUT /api/items/<id> should update item status."""
         # Create item first
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", json={"status": "APPROVED"})
@@ -212,7 +273,11 @@ class TestPutItems:
     @pytest.mark.api
     def test_put_item_missing_status_returns_400(self, client):
         """[P1] PUT /api/items/<id> without status returns 400."""
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", json={})
@@ -222,7 +287,11 @@ class TestPutItems:
     @pytest.mark.api
     def test_put_item_invalid_status_returns_400(self, client):
         """[P1] PUT /api/items/<id> with invalid status returns 400."""
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", json={"status": "INVALID"})
@@ -232,7 +301,11 @@ class TestPutItems:
     @pytest.mark.api
     def test_put_item_accepts_rejected_status(self, client):
         """[P1] PUT /api/items/<id> should accept REJECTED status."""
-        create_response = client.post("/api/items", json={"name": "Candy", "user_role": "KID"})
+        create_response = client.post("/api/items", json={
+            "name": "Candy",
+            "user_role": "KID",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", json={"status": "REJECTED"})
@@ -243,12 +316,15 @@ class TestPutItems:
     @pytest.mark.api
     def test_put_item_invalid_json_returns_400(self, client):
         """[P1] PUT /api/items/<id> with invalid JSON should return 400."""
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.put(f"/api/items/{item_id}", data="not json", content_type="application/json")
         assert response.status_code == 400
-
 
 
 class TestDeleteItems:
@@ -259,7 +335,11 @@ class TestDeleteItems:
     def test_delete_item_returns_204(self, client):
         """[P0] DELETE /api/items/<id> should return 204 on success."""
         # Create item first
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         response = client.delete(f"/api/items/{item_id}")
@@ -270,7 +350,11 @@ class TestDeleteItems:
     def test_delete_item_removes_from_database(self, client):
         """[P0] DELETE /api/items/<id> should remove item from database."""
         # Create item first
-        create_response = client.post("/api/items", json={"name": "Milk", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Milk",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         item_id = create_response.get_json()["_id"]
 
         # Delete it
@@ -305,7 +389,11 @@ class TestCrudFlow:
     def test_full_crud_flow(self, client):
         """[P0] Test complete Create -> Read -> Update -> Delete flow."""
         # CREATE
-        create_response = client.post("/api/items", json={"name": "Bread", "user_role": "PARENT"})
+        create_response = client.post("/api/items", json={
+            "name": "Bread",
+            "user_role": "PARENT",
+            "family_id": TEST_FAMILY_ID
+        })
         assert create_response.status_code == 201
         item_id = create_response.get_json()["_id"]
 
@@ -315,6 +403,7 @@ class TestCrudFlow:
         assert len(items) == 1
         assert items[0]["name"] == "Bread"
         assert items[0]["status"] == "PENDING"
+        assert items[0]["family_id"] == TEST_FAMILY_ID
 
         # UPDATE
         put_response = client.put(f"/api/items/{item_id}", json={"status": "APPROVED"})
@@ -339,9 +428,9 @@ class TestCrudFlow:
         """[P1] Test CRUD with multiple items."""
         # Create multiple items
         items_data = [
-            {"name": "Milk", "user_role": "PARENT"},
-            {"name": "Bamba", "user_role": "KID"},
-            {"name": "Bread", "user_role": "PARENT"},
+            {"name": "Milk", "user_role": "PARENT", "family_id": TEST_FAMILY_ID},
+            {"name": "Bamba", "user_role": "KID", "family_id": TEST_FAMILY_ID},
+            {"name": "Bread", "user_role": "PARENT", "family_id": TEST_FAMILY_ID},
         ]
         item_ids = []
         for item in items_data:

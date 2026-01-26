@@ -11,5 +11,5 @@
 - **AC:** Approve/Reject buttons hidden in "Requestor" mode.
 
 ### 5.2 Layout Skeleton
-- **Action:** Create `frontend/src/index.html`. 
+- **Action:** Create `frontend/static/index.html`. 
 - **AC:** Renders item list container and "Add Item" form.

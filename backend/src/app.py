@@ -1,8 +1,9 @@
 import logging
 import sys
 import threading
+from typing import Tuple, Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from prometheus_client import make_wsgi_app, Counter, Histogram
 from pymongo.errors import ConnectionFailure
@@ -17,17 +18,18 @@ from db import get_db
 from models import validate_item, item_to_dict
 
 # JSON Logging Configuration
-def setup_logging():
+def setup_logging() -> logging.Logger:
     handler = logging.StreamHandler(sys.stdout)
     formatter = jsonlogger.JsonFormatter(
         '%(asctime)s %(levelname)s %(name)s %(message)s'
     )
     handler.setFormatter(formatter)
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(handler)
-    return logging.getLogger(__name__)
+    # Configure only the app logger, not root
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    return logger
 
 logger = setup_logging()
 
@@ -43,19 +45,19 @@ REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method',
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency')
 
 @app.route('/health')
-def health():
+def health() -> Tuple[Response, int]:
     REQUEST_COUNT.labels(method='GET', endpoint='/health').inc()
     try:
         if db.db_client:
             db.db_client.admin.command('ping')
-        return jsonify({'status': 'healthy', 'service': 'backend', 'db': 'connected' if db.db_client else 'not_initialized'})
+        return jsonify({'status': 'healthy', 'service': 'backend', 'db': 'connected' if db.db_client else 'not_initialized'}), 200
     except Exception as e:
         logger.error('Health check failed', extra={'error': str(e)})
         return jsonify({'status': 'unhealthy', 'service': 'backend', 'error': str(e)}), 503
 
 
 @app.route('/api/items', methods=['GET'])
-def get_items():
+def get_items() -> Tuple[Response, int]:
     REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()
     try:
         database = get_db()
@@ -71,7 +73,7 @@ def get_items():
 
 
 @app.route('/api/items', methods=['POST'])
-def create_item():
+def create_item() -> Tuple[Response, int]:
     REQUEST_COUNT.labels(method='POST', endpoint='/api/items').inc()
     try:
         data = request.get_json()
@@ -83,10 +85,6 @@ def create_item():
 
         if errors:
             return jsonify({'error': 'Validation failed', 'details': errors}), 400
-
-        # Preserve ai_status if present in request (for backward compatibility)
-        if 'ai_status' in data:
-            validated_item['ai_status'] = data['ai_status']
 
         database = get_db()
         result = database['items'].insert_one(validated_item)
@@ -110,7 +108,7 @@ def create_item():
 
 
 @app.route('/api/items/<item_id>', methods=['PUT'])
-def update_item(item_id):
+def update_item(item_id: str) -> Tuple[Response, int]:
     REQUEST_COUNT.labels(method='PUT', endpoint='/api/items/<id>').inc()
     try:
         obj_id = ObjectId(item_id)
@@ -147,7 +145,7 @@ def update_item(item_id):
 
 
 @app.route('/api/items/<item_id>', methods=['DELETE'])
-def delete_item(item_id):
+def delete_item(item_id: str) -> Any:  # Returns 204 No Content which is typically empty string or bytes
     REQUEST_COUNT.labels(method='DELETE', endpoint='/api/items/<id>').inc()
     try:
         obj_id = ObjectId(item_id)
