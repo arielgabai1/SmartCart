@@ -66,11 +66,12 @@ epics:
 
   - id: 6
     title: "Frontend-Backend Integration"
-    status: "NOT STARTED"
+    status: "IN_PROGRESS"
     stories:
       - id: "6.1"
         title: "Aggressive Polling Engine"
         done: false
+        status: "review"
       - id: "6.2"
         title: "POST Integration"
         done: false
