@@ -22,11 +22,11 @@ epics:
 
   - id: 2
     title: "Backend API Scaffolding"
-    status: "NOT_STARTED"
+    status: "IN_PROGRESS"
     stories:
       - id: "2.1"
         title: "Dual-Port Flask Setup"
-        done: false
+        done: true
       - id: "2.2"
         title: "Base JSON Routing"
         done: false
