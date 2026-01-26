@@ -2,7 +2,7 @@ project: "Smart Cart (Israel Budget Guard)"
 version: "1.0"
 methodology: "BMad-Fullstack"
 current_sprint: 1
-overall_progress: 5%
+overall_progress: 50%
 
 # Tracked against Architecture v1.0 and PRD v1.0
 epics:
@@ -19,7 +19,7 @@ epics:
       - id: "1.3"
         title: "Secrets Bootstrap"
         done: true
-  
+
   - id: 2
     title: "Backend API Scaffolding"
     status: "DONE"
