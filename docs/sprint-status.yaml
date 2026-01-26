@@ -8,7 +8,7 @@ overall_progress: 5%
 epics:
   - id: 1
     title: "Project Setup & Foundation"
-    status: "IN_PROGRESS" # [NOT_STARTED, IN_PROGRESS, DONE]
+    status: "DONE" # [NOT_STARTED, IN_PROGRESS, DONE]
     stories:
       - id: "1.1"
         title: "Multi-Container Orchestration"
