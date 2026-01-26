@@ -40,7 +40,7 @@ class TestValidateItem:
         data = {
             'family_id': 'family-456',
             'name': 'Banana',
-            'user_role': 'KID',
+            'user_role': 'MEMBER',
             'status': 'APPROVED',
             'price_nis': 15.5
         }
@@ -49,7 +49,7 @@ class TestValidateItem:
         assert errors == []
         assert validated['family_id'] == 'family-456'
         assert validated['name'] == 'Banana'
-        assert validated['user_role'] == 'KID'
+        assert validated['user_role'] == 'MEMBER'
         assert validated['status'] == 'APPROVED'
         assert validated['price_nis'] == 15.5
         assert 'created_at' in validated

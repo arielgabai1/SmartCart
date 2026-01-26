@@ -9,7 +9,7 @@
 | **Source** | prd.md |
 
 ## 1. Executive Summary
-This design bridges the gap between the "Requestor" (Kid) and the "CFO" (Parent). The core UX challenge is managing the latency of AI pricing without disrupting the user's flow, while simultaneously preventing the emotional friction of "vanishing items" when requests are rejected.
+This design bridges the gap between the "Requestor" (Member) and the "CFO" (Manager). The core UX challenge is managing the latency of AI pricing without disrupting the user's flow, while simultaneously preventing the emotional friction of "vanishing items" when requests are rejected.
 
 ## 2. Core UX Strategy
 
@@ -21,8 +21,8 @@ To satisfy the requirement for "perceived zero-latency" (FR-03), all user action
 * **Visual State:** Price shows a "calculating" skeleton loader until data returns.
 
 ### 2.2 The "No-Vanish" Rejection Policy
-To solve the Kid's pain point of uncertainty:
-* **Current Behavior (Bad):** Item is deleted. Kid thinks the app broke.
+To solve the Member's pain point of uncertainty:
+* **Current Behavior (Bad):** Item is deleted. Member thinks the app broke.
 * **New Behavior (Good):** Rejected items remain on the list but change visual state (Strikethrough + Red "Rejected" badge). This provides closure.
 
 ### 2.3 Visualizing Observability (The "DevOps" Twist)

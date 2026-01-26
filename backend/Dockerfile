@@ -5,9 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN groupadd -r smartcartgroup && useradd -r -g smartcartgroup smartcart_user
+
 COPY src/ ./src/
 
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-USER appuser
+USER smartcart_user
 
 CMD ["python", "src/app.py"]

@@ -8,7 +8,7 @@
 
 ## 2. Data Dictionary (Schema)
 **User:**
-* `user_id` (UUID), `family_id` (UUID), `role` (parent/kid), `password_hash`
+* `user_id` (UUID), `family_id` (UUID), `role` (manager/member), `password_hash`
 
 **Item:**
 * `item_id` (UUID), `family_id` (UUID), `name` (Str), `price_nis` (Float), `status` (approved/pending), `created_at` (Timestamp)
@@ -21,7 +21,7 @@
 ## 4. Implementation Priorities (Day 1)
 1.  **Skeleton:** `app.py` with Threaded Metrics.
 2.  **Database:** `models.py` with `family_id` logic.
-3.  **UI:** `index.html` with Role switching query param (`?role=parent`).
+3.  **UI:** `index.html` with Role switching query param (`?role=manager`).
 4.  **AI:** `ai_engine.py` connected to OpenAI.
 
 ## 5. Known Pain Points & Mitigations

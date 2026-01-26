@@ -7,7 +7,7 @@
 
 ## 2. Core Value Propositions
 * **The "Israel Budget Guard":** AI-driven price estimation using real-time Israeli market data (NIS) to track family spending.
-* **Role-Based Command Center:** Hierarchical access (Parent vs. Kid) ensuring financial control.
+* **Role-Based Command Center:** Hierarchical access (Manager vs. Member) ensuring financial control.
 * **DevOps Native:** Built from day one with Observability (Prometheus), Chaos Engineering (Panic Mode), and Security (Network Isolation) in mind.
 
 ## 3. Technical Foundation (The "No-Infra" Stack)
@@ -22,8 +22,8 @@
 | Feature | User | Description |
 | :--- | :--- | :--- |
 | **Live Sync** | All | Real-time list updates via aggressive polling (3s). |
-| **Role Limits** | Kid | Can only "Request" items. cannot see Budget. |
-| **Approval Queue** | Parent | Review and Approve/Reject kid requests. |
+| **Role Limits** | Member | Can only "Request" items. cannot see Budget. |
+| **Approval Queue** | Manager | Review and Approve/Reject member requests. |
 | **Smart Price** | System | Auto-estimates NIS price for every item via AI. |
 | **Panic Mode** | Admin | Simulated system failure trigger for testing alerts. |
 

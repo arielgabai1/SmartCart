@@ -8,8 +8,9 @@ from typing import Dict, Any, List, Tuple
 
 
 # Constants for validation
-VALID_USER_ROLES = ['PARENT', 'KID']
+VALID_USER_ROLES = ['MANAGER', 'MEMBER']
 VALID_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ERROR']
+VALID_AI_STATUSES = ['CALCULATING', 'COMPLETED', 'ERROR']
 MAX_ITEM_NAME_LENGTH = 200
 DEFAULT_STATUS = 'PENDING'
 DEFAULT_PRICE_NIS = 0.0
@@ -34,10 +35,10 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     Validation Rules:
         - family_id: Required (UUID string)
         - name: Required, non-empty, max 200 chars
-        - user_role: Optional, must be PARENT or KID if provided
+        - user_role: Optional, must be MANAGER or MEMBER if provided
         - status: Optional, defaults to PENDING
         - price_nis: Optional, defaults to 0.0
-        - ai_status: Optional, arbitrary string (for now)
+        - ai_status: Optional, must be CALCULATING, COMPLETED, or ERROR
         - created_at: Auto-generated if not provided
     """
     errors = []
@@ -84,9 +85,17 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     else:
         validated['price_nis'] = DEFAULT_PRICE_NIS
 
-    # Optional: ai_status
     if 'ai_status' in data:
-        validated['ai_status'] = data['ai_status']
+        if data['ai_status'] not in VALID_AI_STATUSES:
+             errors.append(f'ai_status must be one of: {", ".join(VALID_AI_STATUSES)}')
+        else:
+            validated['ai_status'] = data['ai_status']
+
+    if 'ai_latency' in data:
+        try:
+            validated['ai_latency'] = float(data['ai_latency']) if data['ai_latency'] is not None else None
+        except (ValueError, TypeError):
+            errors.append('ai_latency must be a valid number or null')
 
     # Auto-generate created_at if not provided
     if 'created_at' not in data:
@@ -103,6 +112,7 @@ def item_to_dict(item: Dict[str, Any]) -> Dict[str, Any]:
     Convert MongoDB item document to API-safe dictionary.
 
     Converts ObjectId to string for JSON serialization.
+    Ensures all data contract fields are present.
 
     Args:
         item: MongoDB document
@@ -112,4 +122,11 @@ def item_to_dict(item: Dict[str, Any]) -> Dict[str, Any]:
     """
     if '_id' in item:
         item['_id'] = str(item['_id'])
+    
+    # Ensure data contract compliance (AC 4)
+    if 'ai_status' not in item:
+        item['ai_status'] = None
+    if 'ai_latency' not in item:
+        item['ai_latency'] = None
+        
     return item

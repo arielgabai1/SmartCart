@@ -60,9 +60,13 @@ def health() -> Tuple[Response, int]:
 def get_items() -> Tuple[Response, int]:
     REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()
     try:
+        family_id = request.args.get('family_id')
+        if not family_id:
+             return jsonify({'error': 'Missing required parameter', 'details': 'family_id query parameter is required'}), 400
+
         database = get_db()
-        items = [item_to_dict(item) for item in database['items'].find()]
-        logger.info('Items retrieved', extra={'count': len(items), 'endpoint': '/api/items'})
+        items = [item_to_dict(item) for item in database['items'].find({'family_id': family_id}).limit(100)]
+        logger.info('Items retrieved', extra={'count': len(items), 'endpoint': '/api/items', 'family_id': family_id})
         return jsonify(items), 200
     except ConnectionFailure as e:
         logger.error('Database connection failed', extra={'error': str(e), 'endpoint': '/api/items'})

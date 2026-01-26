@@ -46,7 +46,7 @@ def cleanup_test_items():
         pass  # Best effort cleanup
 
 
-def create_test_item(name, user_role='PARENT'):
+def create_test_item(name, user_role='MANAGER'):
     """Helper to create a test item via API."""
     response = requests.post(
         f'{BASE_URL}/api/items',
@@ -198,9 +198,9 @@ def test_multiple_items_persist_correctly(docker_client, cleanup_test_items):
     """
     # 1. Create items with different attributes
     test_items = [
-        create_test_item('PersistenceTest_Multi_Milk', 'PARENT'),
-        create_test_item('PersistenceTest_Multi_Bread', 'KID'),
-        create_test_item('PersistenceTest_Multi_Eggs', 'PARENT'),
+        create_test_item('PersistenceTest_Multi_Milk', 'MANAGER'),
+        create_test_item('PersistenceTest_Multi_Bread', 'MEMBER'),
+        create_test_item('PersistenceTest_Multi_Eggs', 'MANAGER'),
     ]
 
     # Store original data for comparison

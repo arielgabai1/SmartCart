@@ -73,7 +73,7 @@ The system consists of three primary containers running on a single Docker host:
 | :--- | :--- | :--- |
 | `_id` | `ObjectId` | Unique identifier. |
 | `name` | `String` | Raw input (e.g., "Milk"). |
-| `user_role` | `String` | "PARENT" or "KID". |
+| `user_role` | `String` | "MANAGER" or "MEMBER". |
 | `status` | `String` | "PENDING", "APPROVED", "REJECTED". |
 | `price_nis` | `Float` | Estimated price (NIS). |
 | `ai_status` | `String` | "CALCULATING", "COMPLETED", "ERROR". |
@@ -87,7 +87,7 @@ The system consists of three primary containers running on a single Docker host:
 
 #### 2. Add Item
 * **Endpoint:** `POST /api/items`
-* **Payload:** `{ "name": "Bamba", "user_role": "KID" }`
+* **Payload:** `{ "name": "Bamba", "user_role": "MEMBER" }`
 * **Response:** HTTP 201 (Processing started).
 
 #### 3. Update Status

@@ -14,7 +14,7 @@ def create_item(overrides=None):
     """
     item = {
         "name": fake.word(),
-        "user_role": fake.random_element(["PARENT", "KID"]),
+        "user_role": fake.random_element(["MANAGER", "MEMBER"]),
         "status": fake.random_element(["PENDING", "APPROVED", "REJECTED"]),
         "price_nis": round(fake.pyfloat(min_value=1, max_value=500, right_digits=2), 2),
         "ai_status": fake.random_element(["CALCULATING", "COMPLETED", "ERROR"]),

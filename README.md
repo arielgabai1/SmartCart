@@ -4,7 +4,7 @@ A family grocery list management application with multi-tenancy support and AI-p
 
 ## Overview
 
-SmartCart is a web application that allows families to collaboratively manage their grocery shopping lists. Parents can approve or reject items, while kids can add items to the list. The application features:
+SmartCart is a web application that allows team/group members to collaboratively manage their shopping lists. Managers can approve or reject items, while members can add items to the list. The application features:
 
 - Multi-tenant architecture with `family_id` isolation
 - Dual-port Flask backend (public API on 5000, metrics on 8081)

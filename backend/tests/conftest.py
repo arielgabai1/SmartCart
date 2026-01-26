@@ -12,6 +12,20 @@ import app as app_module
 from app import app as flask_app
 
 
+class MockCursor:
+    """Mock MongoDB cursor."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def __iter__(self):
+        return iter(self._items)
+
+    def limit(self, n):
+        self._items = self._items[:n]
+        return self
+
+
 class MockCollection:
     """Mock MongoDB collection for testing."""
 
@@ -20,8 +34,10 @@ class MockCollection:
 
     def find(self, filter=None):
         if filter is None:
-            return list(self._items)
-        return [i for i in self._items if all(i.get(k) == v for k, v in filter.items())]
+            items = list(self._items)
+        else:
+            items = [i for i in self._items if all(i.get(k) == v for k, v in filter.items())]
+        return MockCursor(items)
 
     def find_one(self, filter):
         for item in self._items:
