@@ -2,8 +2,8 @@ import pytest
 from bson import ObjectId
 import uuid
 
-# Helper to generate a valid family_id
-TEST_FAMILY_ID = str(uuid.uuid4())
+# Helper to generate a valid group_id
+TEST_GROUP_ID = str(uuid.uuid4())
 
 class TestGetItems:
     """Tests for GET /api/items endpoint."""
@@ -12,14 +12,14 @@ class TestGetItems:
     @pytest.mark.api
     def test_get_items_returns_200(self, client):
         """[P0] GET /api/items should return 200 status code."""
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         assert response.status_code == 200
 
     @pytest.mark.p0
     @pytest.mark.api
     def test_get_items_returns_list(self, client):
         """[P0] GET /api/items should return a JSON list."""
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         data = response.get_json()
         assert isinstance(data, list)
 
@@ -27,14 +27,14 @@ class TestGetItems:
     @pytest.mark.api
     def test_get_items_returns_json_content_type(self, client):
         """[P1] GET /api/items should return JSON content type."""
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         assert response.content_type == "application/json"
 
     @pytest.mark.p1
     @pytest.mark.api
     def test_get_items_empty_list_initially(self, client):
         """[P1] GET /api/items should return empty list when no items exist."""
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         data = response.get_json()
         assert data == []
 
@@ -46,16 +46,16 @@ class TestGetItems:
         client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
 
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         data = response.get_json()
 
         assert len(data) == 1
         assert data[0]["name"] == "Milk"
         assert data[0]["user_role"] == "MANAGER"
-        assert data[0]["family_id"] == TEST_FAMILY_ID
+        assert data[0]["group_id"] == TEST_GROUP_ID
 
     @pytest.mark.p0
     @pytest.mark.api
@@ -65,14 +65,14 @@ class TestGetItems:
         client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID,
+            "group_id": TEST_GROUP_ID,
             "status": "APPROVED",
             "price_nis": 15.5,
             "ai_status": "COMPLETED",
             "ai_latency": 1.23
         })
 
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         data = response.get_json()
 
         assert len(data) == 1
@@ -84,6 +84,7 @@ class TestGetItems:
         assert item["user_role"] == "MANAGER"
         assert item["status"] == "APPROVED"
         assert item["price_nis"] == 15.5
+        assert item["quantity"] == 1 # Default
         assert item["ai_status"] == "COMPLETED"
         assert item["ai_latency"] == 1.23
 
@@ -94,10 +95,10 @@ class TestGetItems:
         # Create a minimal item (only required fields)
         client.post("/api/items", json={
             "name": "Bread",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
 
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         data = response.get_json()
 
         assert len(data) == 1
@@ -121,7 +122,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "Bamba",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 201
 
@@ -132,7 +133,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "Bamba",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         data = response.get_json()
 
@@ -141,7 +142,8 @@ class TestPostItems:
         assert data["user_role"] == "MEMBER"
         assert data["status"] == "PENDING"
         assert data["price_nis"] == 0.0
-        assert data["family_id"] == TEST_FAMILY_ID
+        assert data["quantity"] == 1
+        assert data["group_id"] == TEST_GROUP_ID
         # ai_status is optional/backward compat, checking if present only if logic dictates
         # Post-fix: it might be None or default, but strictly returned if part of contract
         if "ai_status" in data:
@@ -149,12 +151,12 @@ class TestPostItems:
 
     @pytest.mark.p1
     @pytest.mark.api
-    def test_get_items_missing_family_id_returns_400(self, client):
+    def test_get_items_missing_group_id_returns_400(self, client):
         """[P1] GET /api/items without family_id should return 400."""
         response = client.get("/api/items")
         assert response.status_code == 400
         data = response.get_json()
-        assert "family_id" in str(data["details"])
+        assert "group_id" in str(data["details"])
 
     @pytest.mark.p1
     @pytest.mark.api
@@ -162,7 +164,7 @@ class TestPostItems:
         """[P1] POST /api/items with invalid ai_status should return 400."""
         response = client.post("/api/items", json={
             "name": "Milk",
-            "family_id": TEST_FAMILY_ID,
+            "group_id": TEST_GROUP_ID,
             "ai_status": "INVALID_STATUS"
         })
         assert response.status_code == 400
@@ -175,7 +177,7 @@ class TestPostItems:
         """[P1] POST /api/items without name should return 400."""
         response = client.post("/api/items", json={
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 400
         data = response.get_json()
@@ -183,7 +185,7 @@ class TestPostItems:
 
     @pytest.mark.p1
     @pytest.mark.api
-    def test_post_item_missing_family_id_returns_400(self, client):
+    def test_post_item_missing_group_id_returns_400(self, client):
         """[P1] POST /api/items without family_id should return 400."""
         response = client.post("/api/items", json={
             "name": "Milk",
@@ -192,7 +194,7 @@ class TestPostItems:
         assert response.status_code == 400
         data = response.get_json()
         assert "error" in data
-        assert "family_id" in str(data["details"])
+        assert "group_id" in str(data["details"])
 
     @pytest.mark.p1
     @pytest.mark.api
@@ -201,7 +203,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "INVALID",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 400
         data = response.get_json()
@@ -221,10 +223,12 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "Wine",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID,
+            "quantity": 5
         })
         assert response.status_code == 201
         data = response.get_json()
+        assert data["quantity"] == 5
         assert data["user_role"] == "MANAGER"
 
     @pytest.mark.p1
@@ -234,7 +238,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "Candy",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 201
         data = response.get_json()
@@ -247,7 +251,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 400
         data = response.get_json()
@@ -260,7 +264,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "   ",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 400
         data = response.get_json()
@@ -274,7 +278,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": long_name,
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 400
         data = response.get_json()
@@ -287,7 +291,7 @@ class TestPostItems:
         response = client.post("/api/items", json={
             "name": "  Milk  ",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert response.status_code == 201
         data = response.get_json()
@@ -305,7 +309,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -320,7 +324,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -352,7 +356,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -366,7 +370,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -380,7 +384,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Candy",
             "user_role": "MEMBER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -395,7 +399,7 @@ class TestPutItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -414,7 +418,7 @@ class TestDeleteItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -429,7 +433,7 @@ class TestDeleteItems:
         create_response = client.post("/api/items", json={
             "name": "Milk",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         item_id = create_response.get_json()["_id"]
 
@@ -437,7 +441,7 @@ class TestDeleteItems:
         client.delete(f"/api/items/{item_id}")
 
         # Verify it's gone
-        get_response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        get_response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         items = get_response.get_json()
         assert len(items) == 0
 
@@ -468,18 +472,18 @@ class TestCrudFlow:
         create_response = client.post("/api/items", json={
             "name": "Bread",
             "user_role": "MANAGER",
-            "family_id": TEST_FAMILY_ID
+            "group_id": TEST_GROUP_ID
         })
         assert create_response.status_code == 201
         item_id = create_response.get_json()["_id"]
 
         # READ
-        get_response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        get_response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         items = get_response.get_json()
         assert len(items) == 1
         assert items[0]["name"] == "Bread"
         assert items[0]["status"] == "PENDING"
-        assert items[0]["family_id"] == TEST_FAMILY_ID
+        assert items[0]["group_id"] == TEST_GROUP_ID
 
         # UPDATE
         put_response = client.put(f"/api/items/{item_id}", json={"status": "APPROVED"})
@@ -487,7 +491,7 @@ class TestCrudFlow:
         assert put_response.get_json()["status"] == "APPROVED"
 
         # Verify update persisted
-        get_response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        get_response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         assert get_response.get_json()[0]["status"] == "APPROVED"
 
         # DELETE
@@ -495,7 +499,7 @@ class TestCrudFlow:
         assert delete_response.status_code == 204
 
         # Verify deletion
-        get_response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        get_response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         assert get_response.get_json() == []
 
     @pytest.mark.p1
@@ -504,9 +508,9 @@ class TestCrudFlow:
         """[P1] Test CRUD with multiple items."""
         # Create multiple items
         items_data = [
-            {"name": "Milk", "user_role": "MANAGER", "family_id": TEST_FAMILY_ID},
-            {"name": "Bamba", "user_role": "MEMBER", "family_id": TEST_FAMILY_ID},
-            {"name": "Bread", "user_role": "MANAGER", "family_id": TEST_FAMILY_ID},
+            {"name": "Milk", "user_role": "MANAGER", "group_id": TEST_GROUP_ID},
+            {"name": "Bamba", "user_role": "MEMBER", "group_id": TEST_GROUP_ID},
+            {"name": "Bread", "user_role": "MANAGER", "group_id": TEST_GROUP_ID},
         ]
         item_ids = []
         for item in items_data:
@@ -515,7 +519,7 @@ class TestCrudFlow:
             item_ids.append(response.get_json()["_id"])
 
         # Read all
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         items = response.get_json()
         assert len(items) == 3
 
@@ -526,8 +530,8 @@ class TestCrudFlow:
         client.delete(f"/api/items/{item_ids[0]}")
 
         # Verify final state
-        response = client.get(f"/api/items?family_id={TEST_FAMILY_ID}")
+        response = client.get(f"/api/items?group_id={TEST_GROUP_ID}")
         items = response.get_json()
         assert len(items) == 2
-        bamba = next(i for i in items if i["name"] == "Bamba")
+        next(i for i in items if i["name"] == "Bamba")
         assert bamba["status"] == "REJECTED"

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>SmartCart | AI-Powered Shopping List</title>
+    <meta name="description"
+        content="Collaborative shopping list management with AI-powered pricing for Israeli markets.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
+</head>
+
+<body class="light-mode">
+    <!-- Sidebar Overlay -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h2>Group Menu</h2>
+            <button id="sidebar-close" class="sidebar-close">&times;</button>
+        </div>
+
+        <div class="sidebar-content">
+            <!-- Group Info Section -->
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Group Info</div>
+                <div class="member-card" style="cursor: pointer;" id="copy-code-card">
+                    <div class="member-info">
+                        <div class="member-name">Invite Code</div>
+                        <div class="member-meta" id="sidebar-join-code">------</div>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--accent-primary);">Copy</span>
+                </div>
+            </div>
+
+            <!-- Members Section (Manager Only) -->
+            <div class="sidebar-section" id="members-section" style="display: none;">
+                <div class="sidebar-section-title">Group Members</div>
+                <div id="members-list">
+                    <!-- Members injected here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button id="logout-btn" class="btn btn-ghost" style="width: 100%;">
+                Sign Out
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main App Container -->
+    <div class="app-container">
+        <div class="main-content">
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button id="menu-toggle" class="menu-toggle">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </button>
+                    <div class="brand">
+                        <h1>SmartCart</h1>
+                        <span class="subtitle" id="group-name-display">Loading...</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button id="theme-toggle" class="theme-toggle" title="Toggle theme">
+                        <span id="theme-icon"></span>
+                    </button>
+                    <div class="user-badge">
+                        <div class="user-avatar" id="user-avatar">?</div>
+                        <div class="user-info">
+                            <span class="user-name" id="user-name-display">User</span>
+                            <span class="user-role" id="user-role-display">Member</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Stats Bar -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-icon total">&#8362;</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="cart-total">0.00</div>
+                        <div class="stat-label">Estimated Total</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon approved">&#10003;</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="approved-count">0</div>
+                        <div class="stat-label">Approved Items</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon pending">&#9679;</div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="pending-count">0</div>
+                        <div class="stat-label">Pending Review</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Grid -->
+            <div class="content-grid">
+                <!-- Pending Requests (Manager only) -->
+                <section id="pending-section" style="display: none; grid-column: 1 / -1;">
+                    <div class="card" style="border-color: rgba(245, 158, 11, 0.3);">
+                        <div class="card-header" style="background: rgba(245, 158, 11, 0.1);">
+                            <h2 class="card-title" style="color: var(--accent-warning);">Pending Requests</h2>
+                        </div>
+                        <div class="card-body">
+                            <div id="pending-container" class="item-list">
+                                <p class="text-muted" style="padding: 1rem;">No pending requests.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Shopping List (Approved Items) -->
+                <section>
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Shopping List</h2>
+                            <button id="clear-all-btn" class="btn btn-danger btn-sm" style="display: none;">
+                                Clear All
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="items-container" class="item-list">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">&#128722;</div>
+                                    <p class="empty-state-text">No items yet. Add your first item!</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- My Items Section (For regular users to see their submissions) -->
+                    <div id="my-items-section" class="card" style="margin-top: 1rem; display: none;">
+                        <div class="card-header">
+                            <h2 class="card-title">My Submissions</h2>
+                        </div>
+                        <div class="card-body">
+                            <div id="my-items-container" class="item-list">
+                                <p class="text-muted" style="padding: 1rem;">No pending or rejected items.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Add Item Form -->
+                <section>
+                    <div class="card form-card">
+                        <div class="card-header">
+                            <h2 class="card-title" id="form-title">Add New Item</h2>
+                        </div>
+                        <div class="card-body">
+                            <form id="item-form">
+                                <div class="form-group">
+                                    <label class="form-label" for="name">Item Name</label>
+                                    <input type="text" id="name" class="form-input" placeholder="e.g. Milk 3%" required>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label" for="category">Category</label>
+                                        <select id="category" class="form-select">
+                                            <option value="DAIRY">Dairy</option>
+                                            <option value="PRODUCE">Produce</option>
+                                            <option value="MEAT">Meat</option>
+                                            <option value="BAKERY">Bakery</option>
+                                            <option value="BEVERAGES">Beverages</option>
+                                            <option value="SNACKS">Snacks</option>
+                                            <option value="HOUSEHOLD">Household</option>
+                                            <option value="ELECTRONICS">Electronics</option>
+                                            <option value="OTHER" selected>Other</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="quantity">Quantity</label>
+                                        <input type="number" id="quantity" class="form-input" value="1" min="1">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="width: 100%;" id="submit-btn">
+                                    Add Item
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+
+</html>

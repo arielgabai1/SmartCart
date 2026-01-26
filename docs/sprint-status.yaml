@@ -55,25 +55,25 @@ epics:
 
   - id: 5
     title: "Frontend Core UI"
-    status: "NOT_STARTED"
+    status: "DONE"
     stories:
       - id: "5.1"
         title: "Persona View Switcher"
-        done: false
+        done: true
       - id: "5.2"
         title: "Layout Skeleton"
-        done: false
+        done: true
 
   - id: 6
     title: "Frontend-Backend Integration"
-    status: "NOT_STARTED"
+    status: "DONE"
     stories:
       - id: "6.1"
         title: "Aggressive Polling Engine"
-        done: false
+        done: true
       - id: "6.2"
         title: "POST Integration"
-        done: false
+        done: true
 
   - id: 7
     title: "Validation & AI Error Handling"

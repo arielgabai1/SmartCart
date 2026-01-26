@@ -18,7 +18,7 @@ def seed_data():
     seed_items = [
         {
             "name": "Milk 3%",
-            "family_id": "demo-family",
+            "group_id": "demo-group",
             "user_role": "MANAGER",
             "status": "PENDING",
             "price_nis": 0.0,
@@ -28,7 +28,7 @@ def seed_data():
         },
         {
             "name": "Eggs (L)",
-            "family_id": "demo-family",
+            "group_id": "demo-group",
             "user_role": "MEMBER",
             "status": "APPROVED",
             "price_nis": 25.90,
@@ -38,7 +38,7 @@ def seed_data():
         },
         {
             "name": "Bread",
-            "family_id": "other-family",
+            "group_id": "other-group",
             "user_role": "MANAGER",
             "status": "PENDING",
             "price_nis": 0.0,
@@ -49,7 +49,7 @@ def seed_data():
     ]
     
     # Clear existing demo data
-    result = items_collection.delete_many({"family_id": {"$in": ["demo-family", "other-family"]}})
+    result = items_collection.delete_many({"group_id": {"$in": ["demo-group", "other-group"]}})
     logger.info(f"Cleared {result.deleted_count} existing demo items.")
     
     # Insert new data
