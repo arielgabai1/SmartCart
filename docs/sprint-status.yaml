@@ -29,7 +29,7 @@ epics:
         done: true
       - id: "2.2"
         title: "Base JSON Routing"
-        done: false
+        done: true
 
   - id: 3
     title: "Database Layer"
