@@ -79,14 +79,16 @@ epics:
 
   - id: 7
     title: "Validation & AI Error Handling"
-    status: "NOT_STARTED"
+    status: "DONE"
     stories:
       - id: "7.1"
         title: "OpenAI Async Pricing Hook"
-        done: false
+        done: true
+        status: "done"
       - id: "7.2"
         title: "AI Fallback Logic"
-        done: false
+        done: true
+        status: "done"
 
   - id: 8
     title: "Testing & Quality"

@@ -139,11 +139,14 @@ def create_item() -> Tuple[Response, int]:
 
         # Async AI
         def run_ai(cid, name, cat):
-            price, status = estimate_item_price(name, cat)
-            database['items'].update_one(
-                {'_id': cid}, 
-                {'$set': {'price_nis': price, 'ai_status': status}}
-            )
+            try:
+                price, status = estimate_item_price(name, cat)
+                database['items'].update_one(
+                    {'_id': cid}, 
+                    {'$set': {'price_nis': price, 'ai_status': status}}
+                )
+            except Exception as e:
+                logger.error(f"Background update failed for item {cid}: {str(e)}")
 
         threading.Thread(
             target=run_ai,
