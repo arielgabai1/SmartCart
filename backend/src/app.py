@@ -451,8 +451,14 @@ def run_metrics_server() -> None:
     port = int(os.environ.get('METRICS_PORT', 8081))
     run_simple('0.0.0.0', port, make_wsgi_app(), threaded=True)
 
-if __name__ == '__main__':
-    # Start metrics server in background thread
+# Start metrics server on module import (for Gunicorn)
+def _start_metrics_on_import():
     threading.Thread(target=run_metrics_server, daemon=True).start()
-    app.run(host='0.0.0.0', port=5000)
+
+_start_metrics_on_import()
+
+if __name__ == '__main__':
+    # Local dev: metrics already started above, just run Flask
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 

@@ -1,0 +1,47 @@
+# Root level .dockerignore (for builds from repo root)
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Docs
+*.md
+!deploy/DEVOPS_READINESS.md
+
+# Python artifacts
+**/__pycache__/
+**/*.py[cod]
+**/*.so
+**/venv/
+**/.venv/
+**/*.egg-info/
+
+# Testing
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Local env files
+.env
+.env.*
+**/.env
+**/.env.*
+
+# CI/CD (not needed in images)
+Jenkinsfile
+Makefile
+.github/
+.gitlab-ci.yml
+
+# Helm chart (not needed in app images)
+deploy/helm/
+
+# ArgoCD manifests
+deploy/argocd/

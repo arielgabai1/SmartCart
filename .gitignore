@@ -68,3 +68,4 @@ htmlcov/
 .gemini*
 .agent*
 CLAUDE.md
+/deploy
