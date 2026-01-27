@@ -7,10 +7,12 @@ from typing import Tuple, Any, Dict
 from flask import Flask, jsonify, request, Response, g
 from flask_cors import CORS
 from dotenv import load_dotenv
-from prometheus_client import make_wsgi_app, Counter
+from prometheus_client import make_wsgi_app, Counter, Histogram, Gauge, generate_latest, CollectorRegistry, REGISTRY
+from prometheus_client.core import GaugeMetricFamily, REGISTRY
 from bson import ObjectId
 from pythonjsonlogger import jsonlogger
 from werkzeug.serving import run_simple
+import time
 
 import db
 from db import get_db
@@ -40,7 +42,59 @@ CORS(app)
 
 # --- Metrics ---
 
-REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
+# --- Metrics ---
+
+REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
+REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request duration in seconds', ['method', 'endpoint'])
+DB_CONNECTIONS = Gauge('db_connections_active', 'Number of active MongoDB connections')
+
+# Custom Collector for DB Connections (Polling/Scrape-time)
+class DbConnectionsCollector:
+    def collect(self):
+        try:
+            client = db.db_client
+            if client:
+                # serverStatus needs admin privileges usually, or at least cluster monitor
+                status = client.admin.command('serverStatus')
+                connections = status['connections']['current']
+                gauge = GaugeMetricFamily('db_connections_active', 'Number of active MongoDB connections', value=connections)
+                yield gauge
+        except Exception as e:
+            logger.error(f"Error collecting DB metrics: {e}")
+
+def update_db_metrics():
+    """Updates DB metrics. Can be called periodically or before scrape."""
+    try:
+        if db.db_client:
+            status = db.db_client.admin.command('serverStatus')
+            current = status.get('connections', {}).get('current', 0)
+            DB_CONNECTIONS.set(current)
+    except Exception as e:
+        logger.error(f"Error updating DB metrics: {e}")
+
+
+
+# --- Middleware ---
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request(response):
+    if request.endpoint == 'metrics': # Don't log metrics scrape itself potentially, or do. usually exclude.
+        return response
+        
+    latency = time.time() - request.start_time
+    endpoint = request.endpoint if request.endpoint else 'unknown'
+    method = request.method
+    status = str(response.status_code)
+    
+    REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status).inc()
+    REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(latency)
+    
+    return response
+
 
 # --- Helpers ---
 
@@ -133,7 +187,9 @@ def get_current_user() -> Tuple[Response, int]:
 @auth_required
 def get_items() -> Tuple[Response, int]:
     """Fetch all items for the user's group."""
-    REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()
+def get_items() -> Tuple[Response, int]:
+    """Fetch all items for the user's group."""
+    # REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()  <-- Removed manual increment
     try:
         database = get_db()
         items = list(database['items']
@@ -366,6 +422,14 @@ def manage_group_member(user_id: str) -> Tuple[Response, int]:
 
 def run_metrics_server() -> None:
     """Runs Prometheus metrics server on a separate port."""
+    
+    def db_metrics_looper():
+        while True:
+            update_db_metrics()
+            time.sleep(5) # Update every 5 seconds
+            
+    threading.Thread(target=db_metrics_looper, daemon=True).start()
+
     port = int(os.environ.get('METRICS_PORT', 8081))
     run_simple('0.0.0.0', port, make_wsgi_app(), threaded=True)
 
