@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Optimistic UI Test</title>
+</head>
+<body>
+    <div id="items-container"></div>
+    <div id="pending-container"></div>
+    <div id="cart-total"></div>
+    <div id="approved-count"></div>
+    <div id="pending-count"></div>
+    
+    <!-- Form elements -->
+    <input type="text" id="name" value="Test Item">
+    <select id="category"><option value="OTHER">Other</option></select>
+    <input type="number" id="quantity" value="1">
+    
+    <!-- User Display -->
+    <span id="user-name-display"></span>
+    <span id="user-role-display"></span>
+    <div id="user-avatar"></div>
+    <span id="group-name-display"></span>
+    <span id="sidebar-join-code"></span>
+
+    <script>
+        // Mock Config and State
+        const CONFIG = { API_BASE: '/api', POLLING_INTERVAL: 100000 };
+        const STATE = { 
+            user: { role: 'MEMBER', user_id: '123' }, 
+            items: [], 
+            members: [],
+            lastItemsHash: null 
+        };
+
+        // Mock AuthService
+        const AuthService = {
+            getToken: () => 'mock-token',
+            logout: () => console.log('logout'),
+            getUser: () => STATE.user,
+            isAuthenticated: () => true
+        };
+
+        // Mock secureFetch (Slow)
+        window.secureFetch = async (url, options) => {
+            console.log(`Fetching ${url}...`);
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    console.log(`Resolved ${url}`);
+                    resolve({
+                        ok: true,
+                        json: async () => []
+                    });
+                }, 1000); // 1 second delay
+            });
+        };
+
+        // Override Init functions to avoid auto-running stuff we don't need
+        window.initTheme = () => {};
+        window.initUI = () => {};
+        window.setupEventListeners = () => {};
+        window.startPolling = () => {};
+        window.updateThemeIcon = () => {};
+
+        // Helper to run test
+        async function runTest() {
+            const nameInput = document.getElementById('name');
+            const itemsContainer = document.getElementById('items-container');
+            
+            console.log('Starting Test: handleFormSubmit with delay');
+            
+            // Trigger submit
+            const e = { preventDefault: () => {} };
+            
+            // We call handleFormSubmit but don't await it yet to check immediate state
+            const promise = handleFormSubmit(e);
+            
+            // Check immediately
+            await new Promise(r => setTimeout(r, 50)); // Wait a tiny bit for sync logic
+            
+            const content = itemsContainer.innerHTML;
+            console.log('Immediate Content:', content);
+            
+            if (content.includes('Test Item')) {
+                console.log('PASS: Item appeared immediately (Optimistic)');
+                document.body.style.backgroundColor = 'lightgreen';
+                document.body.innerHTML += '<h1>PASS</h1>';
+            } else {
+                console.log('FAIL: Item did not appear immediately');
+                document.body.style.backgroundColor = 'salmon';
+                document.body.innerHTML += '<h1>FAIL</h1>';
+            }
+            
+            await promise;
+        }
+    </script>
+    
+    <!-- Load app.js (it will attach handleFormSubmit to window) -->
+    <script src="js/app.js"></script>
+    
+    <script>
+        // Run test after load
+        setTimeout(runTest, 100);
+    </script>
+</body>
+</html>

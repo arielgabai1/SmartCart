@@ -14,7 +14,6 @@ services:
     build: ./backend
     container_name: SmartCart
     ports:
-      - "5001:5000"
       - "8081:8081"
     env_file:
       - .env

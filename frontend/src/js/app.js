@@ -8,7 +8,8 @@ const STATE = {
     items: [],
     members: [],
     lastItemsHash: null,
-    lastMembersHash: null
+    lastMembersHash: null,
+    isSubmitting: false
 };
 
 // ==================== AUTH SERVICE ====================
@@ -279,27 +280,67 @@ async function handleFormSubmit(e) {
     const categoryInput = document.getElementById('category');
     const quantityInput = document.getElementById('quantity');
 
-    const payload = {
-        name: nameInput.value.trim(),
-        category: categoryInput.value,
-        quantity: parseInt(quantityInput.value) || 1
+    const name = nameInput.value.trim();
+    const category = categoryInput.value;
+    const quantity = parseInt(quantityInput.value) || 1;
+
+    if (!name) return;
+
+    // Pause polling to prevent race condition overwriting optimistic UI
+    STATE.isSubmitting = true;
+
+    // Optimistic Update
+    const tempId = 'temp-' + Date.now();
+    const optimisticItem = {
+        _id: tempId,
+        name: name,
+        category: category,
+        quantity: quantity,
+        price_nis: 0,
+        status: STATE.user.role === 'MANAGER' ? 'APPROVED' : 'PENDING',
+        submitted_by: STATE.user.user_id,
+        submitted_by_name: STATE.user.user_name || 'Me',
+        ai_status: 'CALCULATING',
+        created_at: new Date().toISOString()
     };
 
-    if (!payload.name) return;
+    // Store original state for rollback
+    const originalItems = [...STATE.items];
+    
+    // Apply optimistic state
+    STATE.items.push(optimisticItem);
+    renderItems();
+    updateStats();
+
+    // Clear form immediately
+    nameInput.value = '';
+    quantityInput.value = '1';
 
     try {
+        const payload = { name, category, quantity };
         const response = await secureFetch(`${CONFIG.API_BASE}/items`, {
             method: 'POST',
             body: JSON.stringify(payload)
         });
 
         if (response.ok) {
-            nameInput.value = '';
-            quantityInput.value = '1';
-            fetchItems();
+            await fetchItems(); // Wait for sync before releasing lock
+        } else {
+            throw new Error('Server responded with ' + response.status);
         }
     } catch (err) {
         console.error('Error adding item:', err);
+        // Rollback
+        STATE.items = originalItems;
+        renderItems();
+        updateStats();
+        alert('Failed to add item. Please try again.');
+        
+        // Restore form values
+        nameInput.value = name;
+        quantityInput.value = quantity;
+    } finally {
+        STATE.isSubmitting = false;
     }
 }
 
@@ -623,6 +664,8 @@ function startPolling() {
 
     setInterval(() => {
         if (document.hidden) return; // Don't poll if tab is backgrounded
+        if (STATE.isSubmitting) return; // Don't poll if user is submitting (avoids race condition)
+        
         fetchItems();
         fetchMembers();
         syncUserIdentity();

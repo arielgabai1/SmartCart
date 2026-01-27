@@ -2,7 +2,7 @@ project: "Smart Cart (Israel Budget Guard)"
 version: "1.0"
 methodology: "BMad-Fullstack"
 current_sprint: 1
-overall_progress: 50%
+overall_progress: 66%
 
 # Tracked against Architecture v1.0 and PRD v1.0
 epics:
@@ -66,15 +66,16 @@ epics:
 
   - id: 6
     title: "Frontend-Backend Integration"
-    status: "IN_PROGRESS"
+    status: "DONE"
     stories:
       - id: "6.1"
         title: "Aggressive Polling Engine"
-        done: false
-        status: "review"
+        done: true
+        status: "done"
       - id: "6.2"
         title: "POST Integration"
-        done: false
+        done: true
+        status: "done"
 
   - id: 7
     title: "Validation & AI Error Handling"

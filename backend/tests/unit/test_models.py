@@ -22,13 +22,13 @@ class TestValidateItem:
     def test_valid_item_creation_minimal(self):
         """Test valid item with minimal required fields."""
         data = {
-            'family_id': 'test-family-123',
+            'group_id': 'test-family-123',
             'name': 'Apple'
         }
         validated, errors = validate_item(data)
 
         assert errors == []
-        assert validated['family_id'] == 'test-family-123'
+        assert validated['group_id'] == 'test-family-123'
         assert validated['name'] == 'Apple'
         assert validated['status'] == DEFAULT_STATUS
         assert validated['price_nis'] == DEFAULT_PRICE_NIS
@@ -38,7 +38,7 @@ class TestValidateItem:
     def test_valid_item_creation_full(self):
         """Test valid item with all fields provided."""
         data = {
-            'family_id': 'family-456',
+            'group_id': 'family-456',
             'name': 'Banana',
             'user_role': 'MEMBER',
             'status': 'APPROVED',
@@ -47,32 +47,32 @@ class TestValidateItem:
         validated, errors = validate_item(data)
 
         assert errors == []
-        assert validated['family_id'] == 'family-456'
+        assert validated['group_id'] == 'family-456'
         assert validated['name'] == 'Banana'
         assert validated['user_role'] == 'MEMBER'
         assert validated['status'] == 'APPROVED'
         assert validated['price_nis'] == 15.5
         assert 'created_at' in validated
 
-    def test_missing_family_id(self):
-        """Test that missing family_id causes validation error."""
+    def test_missing_group_id(self):
+        """Test that missing group_id causes validation error."""
         data = {'name': 'Orange'}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
-        assert any('family_id' in err.lower() for err in errors)
+        assert any('group_id' in err.lower() for err in errors)
 
-    def test_empty_family_id(self):
-        """Test that empty family_id causes validation error."""
-        data = {'family_id': '', 'name': 'Grape'}
+    def test_empty_group_id(self):
+        """Test that empty group_id causes validation error."""
+        data = {'group_id': '', 'name': 'Grape'}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
-        assert any('family_id' in err.lower() for err in errors)
+        assert any('group_id' in err.lower() for err in errors)
 
     def test_missing_name(self):
         """Test that missing name causes validation error."""
-        data = {'family_id': 'family-789'}
+        data = {'group_id': 'family-789'}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
@@ -80,7 +80,7 @@ class TestValidateItem:
 
     def test_empty_name(self):
         """Test that empty name causes validation error."""
-        data = {'family_id': 'family-101', 'name': ''}
+        data = {'group_id': 'family-101', 'name': ''}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
@@ -88,7 +88,7 @@ class TestValidateItem:
 
     def test_whitespace_only_name(self):
         """Test that whitespace-only name causes validation error."""
-        data = {'family_id': 'family-102', 'name': '   '}
+        data = {'group_id': 'family-102', 'name': '   '}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
@@ -97,7 +97,7 @@ class TestValidateItem:
     def test_name_too_long(self):
         """Test that name exceeding max length causes validation error."""
         long_name = 'A' * (MAX_ITEM_NAME_LENGTH + 1)
-        data = {'family_id': 'family-103', 'name': long_name}
+        data = {'group_id': 'family-103', 'name': long_name}
         validated, errors = validate_item(data)
 
         assert len(errors) > 0
@@ -106,7 +106,7 @@ class TestValidateItem:
     def test_invalid_user_role(self):
         """Test that invalid user_role causes validation error."""
         data = {
-            'family_id': 'family-104',
+            'group_id': 'family-104',
             'name': 'Mango',
             'user_role': 'INVALID_ROLE'
         }
@@ -119,7 +119,7 @@ class TestValidateItem:
     def test_valid_user_roles(self, valid_role):
         """Test that all valid user roles are accepted."""
         data = {
-            'family_id': 'family-105',
+            'group_id': 'family-105',
             'name': 'Peach',
             'user_role': valid_role
         }
@@ -131,7 +131,7 @@ class TestValidateItem:
     def test_invalid_status(self):
         """Test that invalid status causes validation error."""
         data = {
-            'family_id': 'family-106',
+            'group_id': 'family-106',
             'name': 'Pear',
             'status': 'INVALID_STATUS'
         }
@@ -144,7 +144,7 @@ class TestValidateItem:
     def test_valid_statuses(self, valid_status):
         """Test that all valid statuses are accepted."""
         data = {
-            'family_id': 'family-107',
+            'group_id': 'family-107',
             'name': 'Plum',
             'status': valid_status
         }
@@ -156,7 +156,7 @@ class TestValidateItem:
     def test_invalid_price_nis_non_numeric(self):
         """Test that non-numeric price_nis causes validation error."""
         data = {
-            'family_id': 'family-108',
+            'group_id': 'family-108',
             'name': 'Cherry',
             'price_nis': 'not_a_number'
         }
@@ -168,7 +168,7 @@ class TestValidateItem:
     def test_price_nis_string_numeric(self):
         """Test that numeric string price_nis is converted to float."""
         data = {
-            'family_id': 'family-109',
+            'group_id': 'family-109',
             'name': 'Kiwi',
             'price_nis': '12.50'
         }
@@ -181,7 +181,7 @@ class TestValidateItem:
     def test_name_whitespace_trimming(self):
         """Test that name whitespace is trimmed."""
         data = {
-            'family_id': 'family-110',
+            'group_id': 'family-110',
             'name': '  Watermelon  '
         }
         validated, errors = validate_item(data)
@@ -199,7 +199,7 @@ class TestValidateItem:
         }
         validated, errors = validate_item(data)
 
-        # Should have errors for: family_id, name, user_role, status, price_nis
+        # Should have errors for: group_id, name, user_role, status, price_nis
         assert len(errors) >= 4
 
 
@@ -230,3 +230,19 @@ class TestItemToDict:
 
         assert '_id' not in result
         assert result['name'] == 'Test Item'
+
+    def test_submitted_by_defaults(self):
+        """Test that submitted_by fields default correctly."""
+        item = {
+            'name': 'Test Item',
+            'price_nis': 10.0
+        }
+        result = item_to_dict(item)
+        assert result['submitted_by_name'] == 'Group Member'
+
+        item_with_submitter = {
+            'name': 'Test Item',
+            'submitted_by_name': 'Alice'
+        }
+        result_with_submitter = item_to_dict(item_with_submitter)
+        assert result_with_submitter['submitted_by_name'] == 'Alice'
