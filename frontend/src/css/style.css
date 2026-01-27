@@ -109,7 +109,7 @@ body {
 .main-content {
     flex: 1;
     padding: 1rem;
-    max-width: 1400px;
+    max-width: 100%;
     margin: 0 auto;
     width: 100%;
     height: 100%;
@@ -277,6 +277,8 @@ body {
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border);
+    max-width: 1800px;
+    margin: 0 auto 1rem;
 }
 
 .header-left {
@@ -390,6 +392,8 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     margin-bottom: 1rem;
+    max-width: 1800px;
+    margin: 0 auto 1rem;
 }
 
 @media (max-width: 768px) {
@@ -459,8 +463,10 @@ body {
 .content-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    gap: 1.5rem;
     align-items: start;
+    max-width: 1800px;
+    margin: 0 auto;
 }
 
 
@@ -853,6 +859,16 @@ select:focus-visible {
 }
 
 /* ========== RESPONSIVE ========== */
+@media (min-width: 1920px) {
+    .main-content {
+        padding: 2rem 3rem;
+    }
+
+    .content-grid {
+        gap: 2rem;
+    }
+}
+
 @media (max-width: 1280px) {
     .content-grid {
         grid-template-columns: 1fr;
@@ -866,6 +882,13 @@ select:focus-visible {
         display: block;
     }
 
+    .content-grid > section {
+        margin-bottom: 1.5rem;
+    }
+
+    .content-grid > section:last-child {
+        margin-bottom: 0;
+    }
 
     .form-card {
         position: static;
@@ -875,6 +898,14 @@ select:focus-visible {
 @media (max-width: 640px) {
     .main-content {
         padding: 1rem;
+    }
+
+    .item-list {
+        gap: 2rem;
+    }
+
+    .content-grid {
+        gap: 1.25rem;
     }
 
     .app-header {
