@@ -92,11 +92,12 @@ epics:
 
   - id: 8
     title: "Testing & Quality"
-    status: "IN_PROGRESS"
+    status: "DONE"
     stories:
       - id: "8.1"
         title: "API Integration Tests"
-        done: false
+        done: true
+        status: "done"
 
   - id: 9
     title: "Metrics & Documentation"

@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN groupadd -r smartcartgroup && useradd -r -g smartcartgroup smartcart_user
 
 COPY src/ ./src/
+COPY tests/ ./tests/
+COPY pytest.ini .
 
 USER smartcart_user
 

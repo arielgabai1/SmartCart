@@ -3,10 +3,13 @@ Integration tests - API endpoints with mocked database.
 Covers all API routes, authentication, authorization, and multi-tenancy.
 """
 import sys
-sys.path.insert(0, '/app/src')
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 import pytest
 from bson import ObjectId
+from unittest.mock import patch
+import auth as auth_module
 
 
 # --- Items API Tests ---
@@ -39,8 +42,6 @@ def test_post_item_success_manager(client):
 def test_post_item_success_member(client, mock_db):
     """POST /api/items creates item with PENDING status for MEMBER."""
     # Override mock to return MEMBER role
-    from unittest.mock import patch
-    import auth as auth_module
 
     def mock_decode_member(token):
         return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
@@ -101,9 +102,6 @@ def test_put_item_updates_status_manager(client):
 @pytest.mark.p1
 def test_put_item_status_forbidden_for_member(client):
     """PUT /api/items/<id> status change forbidden for MEMBER."""
-    from unittest.mock import patch
-    import auth as auth_module
-
     # Create item as MANAGER
     create_response = client.post('/api/items', json={'name': 'Candy'})
     item_id = create_response.get_json()['_id']
@@ -172,8 +170,6 @@ def test_delete_item_by_manager(client):
 @pytest.mark.p1
 def test_delete_item_by_owner(client):
     """DELETE /api/items/<id> allows owner to delete their own item."""
-    from unittest.mock import patch
-    import auth as auth_module
 
     # Create item as MEMBER
     def mock_decode_member(token):
@@ -193,8 +189,6 @@ def test_delete_item_by_owner(client):
 @pytest.mark.p1
 def test_delete_item_forbidden_for_non_owner_member(client, mock_db):
     """DELETE /api/items/<id> forbidden for MEMBER who doesn't own item."""
-    from unittest.mock import patch
-    import auth as auth_module
 
     # Create item as MANAGER
     create_response = client.post('/api/items', json={'name': 'Snack'})
@@ -241,9 +235,6 @@ def test_delete_all_items_by_manager(client):
 @pytest.mark.p1
 def test_delete_all_items_forbidden_for_member(client):
     """DELETE /api/items/clear forbidden for MEMBER."""
-    from unittest.mock import patch
-    import auth as auth_module
-
     def mock_decode_member(token):
         return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
                 'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
@@ -284,9 +275,6 @@ def test_crud_flow_complete(client):
 @pytest.mark.p0
 def test_items_isolated_by_group(client, mock_db):
     """Items are isolated by group_id (multi-tenancy)."""
-    from unittest.mock import patch
-    import auth as auth_module
-
     # Create item in group A
     client.post('/api/items', json={'name': 'Group A Item'})
 
@@ -543,9 +531,6 @@ def test_get_group_members_success(client, mock_db):
 @pytest.mark.p1
 def test_get_group_members_forbidden_for_member(client):
     """GET /api/groups/members forbidden for MEMBER."""
-    from unittest.mock import patch
-    import auth as auth_module
-
     def mock_decode_member(token):
         return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
                 'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
@@ -566,7 +551,10 @@ def test_update_member_role_success(client, mock_db):
         'email': 'john@smith.com',
         'password': 'secure123'
     })
-    join_code = register_resp.get_json()['details']['join_code']
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
 
     join_resp = client.post('/api/auth/join', json={
         'join_code': join_code,
@@ -576,18 +564,21 @@ def test_update_member_role_success(client, mock_db):
     })
     member_id = join_resp.get_json()['details']['user_id']
 
-    # Promote to MANAGER
-    response = client.put(f'/api/groups/members/{member_id}', json={'role': 'MANAGER'})
+    # Patch token to match the created group and admin
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
 
-    assert response.status_code == 200
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
+        # Promote to MANAGER
+        response = client.put(f'/api/groups/members/{member_id}', json={'role': 'MANAGER'})
+        assert response.status_code == 200
 
 
 @pytest.mark.integration
 @pytest.mark.p1
 def test_update_member_role_forbidden_for_member(client, mock_db):
     """PUT /api/groups/members/<id> forbidden for MEMBER."""
-    from unittest.mock import patch
-    import auth as auth_module
 
     fake_user_id = str(ObjectId())
 
@@ -611,7 +602,10 @@ def test_update_member_invalid_role_returns_400(client, mock_db):
         'email': 'john@smith.com',
         'password': 'secure123'
     })
-    join_code = register_resp.get_json()['details']['join_code']
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
 
     join_resp = client.post('/api/auth/join', json={
         'join_code': join_code,
@@ -621,10 +615,15 @@ def test_update_member_invalid_role_returns_400(client, mock_db):
     })
     member_id = join_resp.get_json()['details']['user_id']
 
-    # Try invalid role
-    response = client.put(f'/api/groups/members/{member_id}', json={'role': 'ADMIN'})
+    # Patch token
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
 
-    assert response.status_code == 400
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
+        # Try invalid role
+        response = client.put(f'/api/groups/members/{member_id}', json={'role': 'ADMIN'})
+        assert response.status_code == 400
 
 
 @pytest.mark.integration
@@ -638,14 +637,13 @@ def test_update_self_role_returns_400(client, mock_db):
         'email': 'john@smith.com',
         'password': 'secure123'
     })
-    user_id = register_resp.get_json()['details']['user_id']
+    details = register_resp.get_json()['details']
+    user_id = details['user_id']
+    group_id = details['group_id']
 
-    # Try to change own role (mocked user_id matches)
-    from unittest.mock import patch
-    import auth as auth_module
-
+    # Try to change own role
     def mock_decode_self(token):
-        return {'user_id': user_id, 'group_id': 'test-group-456', 'role': 'MANAGER',
+        return {'user_id': user_id, 'group_id': group_id, 'role': 'MANAGER',
                 'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': 'TEST123'}
 
     with patch.object(auth_module, 'decode_token', mock_decode_self):
@@ -664,7 +662,10 @@ def test_delete_member_success(client, mock_db):
         'email': 'john@smith.com',
         'password': 'secure123'
     })
-    join_code = register_resp.get_json()['details']['join_code']
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
 
     join_resp = client.post('/api/auth/join', json={
         'join_code': join_code,
@@ -674,18 +675,21 @@ def test_delete_member_success(client, mock_db):
     })
     member_id = join_resp.get_json()['details']['user_id']
 
-    # Remove member
-    response = client.delete(f'/api/groups/members/{member_id}')
+    # Patch token
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
 
-    assert response.status_code == 204
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
+        # Remove member
+        response = client.delete(f'/api/groups/members/{member_id}')
+        assert response.status_code == 204
 
 
 @pytest.mark.integration
 @pytest.mark.p1
 def test_delete_member_forbidden_for_member(client):
     """DELETE /api/groups/members/<id> forbidden for MEMBER."""
-    from unittest.mock import patch
-    import auth as auth_module
 
     fake_user_id = str(ObjectId())
 
@@ -709,14 +713,14 @@ def test_delete_self_returns_400(client, mock_db):
         'email': 'john@smith.com',
         'password': 'secure123'
     })
-    user_id = register_resp.get_json()['details']['user_id']
+    details = register_resp.get_json()['details']
+    user_id = details['user_id']
+    group_id = details['group_id']
 
     # Try to delete self
-    from unittest.mock import patch
-    import auth as auth_module
 
     def mock_decode_self(token):
-        return {'user_id': user_id, 'group_id': 'test-group-456', 'role': 'MANAGER',
+        return {'user_id': user_id, 'group_id': group_id, 'role': 'MANAGER',
                 'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': 'TEST123'}
 
     with patch.object(auth_module, 'decode_token', mock_decode_self):

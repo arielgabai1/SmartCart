@@ -6,10 +6,7 @@ import pytest
 import requests
 import time
 
-
 BASE_URL = 'http://localhost'
-BACKEND_URL = 'http://localhost:8081'
-
 
 # --- System Health Tests ---
 
@@ -18,7 +15,7 @@ BACKEND_URL = 'http://localhost:8081'
 def test_health_endpoint_accessible():
     """Health endpoint accessible via metrics port."""
     try:
-        response = requests.get(f'{BACKEND_URL}/health', timeout=5)
+        response = requests.get(f'{BASE_URL}/api/health', timeout=5)
         assert response.status_code in [200, 503]
         data = response.json()
         assert 'status' in data
@@ -65,25 +62,28 @@ def test_complete_manager_journey():
     5. Delete item
     """
     try:
+        timestamp = str(time.time())
+        email = f"manager-{timestamp}@test.com"
+        password = "secure123"
+
         # 1. Register
         register_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'E2E Test Family {time.time()}',
+            'group_name': f'E2E Test Family {timestamp}',
             'user_name': 'Manager User',
-            'email': f'manager-{time.time()}@test.com',
-            'password': 'secure123'
+            'email': email,
+            'password': password
         }, timeout=5)
         assert register_resp.status_code == 201
 
         # 2. Login
         login_resp = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'manager-{register_resp.json()["details"]["user_id"]}@test.com',
-            'password': 'secure123'
+            'email': email,
+            'password': password
         }, timeout=5)
-
-        # Use token from registration response instead
-        token = register_resp.json().get('token')
-        if not token:
-            pytest.skip("Token not returned in registration response")
+        assert login_resp.status_code == 200
+        
+        token = login_resp.json().get('token')
+        assert token is not None
 
         headers = {'Authorization': f'Bearer {token}'}
 

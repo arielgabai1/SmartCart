@@ -1,0 +1,24 @@
+services:
+  test-runner:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartcart-test-runner
+    environment:
+      - MONGO_URI=mongodb://test-db:27017/smartcart_test
+      - JWT_SECRET=test-secret
+    depends_on:
+      - test-db
+    networks:
+      - test-net
+    command: pytest tests
+
+  test-db:
+    image: mongo:8.2
+    container_name: smartcart-test-db
+    networks:
+      - test-net
+
+networks:
+  test-net:
+    driver: bridge

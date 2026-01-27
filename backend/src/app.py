@@ -116,7 +116,7 @@ def get_items() -> Tuple[Response, int]:
 @auth_required
 def create_item() -> Tuple[Response, int]:
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data: return jsonify({'error': 'Invalid JSON'}), 400
 
         # Audit and Multi-tenancy

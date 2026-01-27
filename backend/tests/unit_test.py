@@ -3,12 +3,16 @@ Unit tests - Isolated business logic with mocked dependencies.
 Covers all validation functions, utilities, and helper methods.
 """
 import sys
-sys.path.insert(0, '/app/src')
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 import pytest
 from bson import ObjectId
 from datetime import datetime, timezone
 import re
+from models import validate_item, validate_user, validate_group, item_to_dict, user_to_dict, MAX_ITEM_NAME_LENGTH
+from auth import hash_password, verify_password, generate_token, decode_token
+from ai_engine import estimate_item_price
 
 
 # --- Item Validation Tests ---
@@ -16,8 +20,6 @@ import re
 @pytest.mark.unit
 def test_validate_item_success():
     """validate_item accepts valid item data with all fields."""
-    from models import validate_item
-
     data = {
         'name': 'Milk',
         'group_id': 'test-group-123',
@@ -49,8 +51,6 @@ def test_validate_item_success():
 @pytest.mark.unit
 def test_validate_item_minimal_fields():
     """validate_item works with minimal required fields."""
-    from models import validate_item
-
     data = {'name': 'Bread', 'group_id': 'group-789'}
     validated, errors = validate_item(data)
 
@@ -65,7 +65,6 @@ def test_validate_item_minimal_fields():
 @pytest.mark.unit
 def test_validate_item_missing_name():
     """validate_item rejects item without name."""
-    from models import validate_item
 
     data = {'group_id': 'test-group-123'}
     validated, errors = validate_item(data)
@@ -77,7 +76,6 @@ def test_validate_item_missing_name():
 @pytest.mark.unit
 def test_validate_item_empty_name():
     """validate_item rejects empty or whitespace-only name."""
-    from models import validate_item
 
     data = {'name': '   ', 'group_id': 'test-group-123'}
     validated, errors = validate_item(data)
@@ -101,7 +99,6 @@ def test_validate_item_name_too_long():
 @pytest.mark.unit
 def test_validate_item_missing_group_id():
     """validate_item rejects item without group_id."""
-    from models import validate_item
 
     data = {'name': 'Bread'}
     validated, errors = validate_item(data)
@@ -113,7 +110,6 @@ def test_validate_item_missing_group_id():
 @pytest.mark.unit
 def test_validate_item_strips_whitespace():
     """validate_item strips whitespace from name and category."""
-    from models import validate_item
 
     data = {'name': '  Eggs  ', 'group_id': 'test-group-123', 'category': '  Protein  '}
     validated, errors = validate_item(data)
@@ -126,7 +122,6 @@ def test_validate_item_strips_whitespace():
 @pytest.mark.unit
 def test_validate_item_invalid_status():
     """validate_item rejects invalid status."""
-    from models import validate_item
 
     data = {'name': 'Candy', 'group_id': 'test-group-123', 'status': 'INVALID'}
     validated, errors = validate_item(data)
@@ -138,7 +133,6 @@ def test_validate_item_invalid_status():
 @pytest.mark.unit
 def test_validate_item_invalid_quantity():
     """validate_item rejects invalid or negative quantity."""
-    from models import validate_item
 
     # Test negative quantity
     data = {'name': 'Candy', 'group_id': 'test-group-123', 'quantity': 0}
@@ -156,7 +150,6 @@ def test_validate_item_invalid_quantity():
 @pytest.mark.unit
 def test_validate_item_invalid_price():
     """validate_item rejects non-numeric price."""
-    from models import validate_item
 
     data = {'name': 'Candy', 'group_id': 'test-group-123', 'price_nis': 'expensive'}
     validated, errors = validate_item(data)
@@ -168,7 +161,6 @@ def test_validate_item_invalid_price():
 @pytest.mark.unit
 def test_validate_item_invalid_ai_status():
     """validate_item rejects invalid ai_status."""
-    from models import validate_item
 
     data = {'name': 'Candy', 'group_id': 'test-group-123', 'ai_status': 'INVALID'}
     validated, errors = validate_item(data)
@@ -180,7 +172,6 @@ def test_validate_item_invalid_ai_status():
 @pytest.mark.unit
 def test_validate_item_invalid_user_role():
     """validate_item rejects invalid user_role."""
-    from models import validate_item
 
     data = {'name': 'Candy', 'group_id': 'test-group-123', 'user_role': 'ADMIN'}
     validated, errors = validate_item(data)
@@ -194,7 +185,6 @@ def test_validate_item_invalid_user_role():
 @pytest.mark.unit
 def test_validate_user_success():
     """validate_user accepts valid user data."""
-    from models import validate_user
 
     data = {
         'email': 'test@example.com',
@@ -217,7 +207,6 @@ def test_validate_user_success():
 @pytest.mark.unit
 def test_validate_user_email_normalization():
     """validate_user normalizes email to lowercase."""
-    from models import validate_user
 
     data = {
         'email': 'Test@Example.COM',
@@ -234,7 +223,6 @@ def test_validate_user_email_normalization():
 @pytest.mark.unit
 def test_validate_user_invalid_email():
     """validate_user rejects invalid email formats."""
-    from models import validate_user
 
     invalid_emails = ['notanemail', '@example.com', 'user@', 'user@.com', '']
 
@@ -253,7 +241,6 @@ def test_validate_user_invalid_email():
 @pytest.mark.unit
 def test_validate_user_missing_required_fields():
     """validate_user rejects data missing required fields."""
-    from models import validate_user
 
     # Missing email
     data = {'password_hash': 'hash', 'group_id': 'group-123', 'role': 'MEMBER'}
@@ -283,7 +270,6 @@ def test_validate_user_missing_required_fields():
 @pytest.mark.unit
 def test_validate_user_invalid_role():
     """validate_user rejects invalid role values."""
-    from models import validate_user
 
     data = {
         'email': 'test@example.com',
@@ -302,7 +288,6 @@ def test_validate_user_invalid_role():
 @pytest.mark.unit
 def test_validate_group_success():
     """validate_group accepts valid group data."""
-    from models import validate_group
 
     data = {'name': 'Smith Family', 'join_code': 'ABC123', 'subscription_tier': 'PREMIUM'}
     validated, errors = validate_group(data)
@@ -317,7 +302,6 @@ def test_validate_group_success():
 @pytest.mark.unit
 def test_validate_group_generates_join_code():
     """validate_group generates join_code if not provided."""
-    from models import validate_group
 
     data = {'name': 'Johnson Family'}
     validated, errors = validate_group(data)
@@ -332,7 +316,6 @@ def test_validate_group_generates_join_code():
 @pytest.mark.unit
 def test_validate_group_missing_name():
     """validate_group rejects data without name."""
-    from models import validate_group
 
     data = {}
     validated, errors = validate_group(data)
@@ -344,7 +327,6 @@ def test_validate_group_missing_name():
 @pytest.mark.unit
 def test_validate_group_empty_name():
     """validate_group rejects empty or whitespace-only name."""
-    from models import validate_group
 
     data = {'name': '   '}
     validated, errors = validate_group(data)
@@ -358,7 +340,6 @@ def test_validate_group_empty_name():
 @pytest.mark.unit
 def test_item_to_dict_converts_objectid():
     """item_to_dict converts MongoDB ObjectId to string."""
-    from models import item_to_dict
 
     item = {
         '_id': ObjectId(),
@@ -375,7 +356,6 @@ def test_item_to_dict_converts_objectid():
 @pytest.mark.unit
 def test_item_to_dict_adds_defaults():
     """item_to_dict adds default values for missing optional fields."""
-    from models import item_to_dict
 
     item = {'_id': ObjectId(), 'name': 'Test'}
     result = item_to_dict(item)
@@ -389,7 +369,6 @@ def test_item_to_dict_adds_defaults():
 @pytest.mark.unit
 def test_item_to_dict_preserves_submitted_by_name():
     """item_to_dict preserves submitted_by_name if present."""
-    from models import item_to_dict
 
     item = {'_id': ObjectId(), 'name': 'Test', 'submitted_by_name': 'Alice'}
     result = item_to_dict(item)
@@ -400,7 +379,6 @@ def test_item_to_dict_preserves_submitted_by_name():
 @pytest.mark.unit
 def test_user_to_dict_removes_password():
     """user_to_dict removes password_hash from user data."""
-    from models import user_to_dict
 
     user = {
         '_id': ObjectId(),
@@ -421,7 +399,6 @@ def test_user_to_dict_removes_password():
 @pytest.mark.unit
 def test_hash_password():
     """hash_password returns a bcrypt hash."""
-    from auth import hash_password
 
     password = 'my_secure_password'
     hashed = hash_password(password)
@@ -435,7 +412,6 @@ def test_hash_password():
 @pytest.mark.unit
 def test_verify_password_success():
     """verify_password returns True for correct password."""
-    from auth import hash_password, verify_password
 
     password = 'correct_password'
     hashed = hash_password(password)
@@ -446,7 +422,6 @@ def test_verify_password_success():
 @pytest.mark.unit
 def test_verify_password_failure():
     """verify_password returns False for incorrect password."""
-    from auth import hash_password, verify_password
 
     password = 'correct_password'
     hashed = hash_password(password)
@@ -457,7 +432,6 @@ def test_verify_password_failure():
 @pytest.mark.unit
 def test_generate_token():
     """generate_token creates a valid JWT with all claims."""
-    from auth import generate_token, decode_token
 
     token = generate_token(
         user_id='user-123',
@@ -486,8 +460,6 @@ def test_generate_token():
 @pytest.mark.unit
 def test_decode_token_invalid():
     """decode_token returns None for invalid token."""
-    from auth import decode_token
-
     assert decode_token('invalid.token.here') is None
     assert decode_token('') is None
 
@@ -497,7 +469,6 @@ def test_decode_token_invalid():
 @pytest.mark.unit
 def test_ai_engine_fallback_no_api_key(monkeypatch):
     """estimate_item_price returns fallback when OPENAI_API_KEY not set."""
-    from ai_engine import estimate_item_price
 
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     price, status = estimate_item_price('Milk', 'Dairy')
@@ -509,7 +480,6 @@ def test_ai_engine_fallback_no_api_key(monkeypatch):
 @pytest.mark.unit
 def test_ai_engine_fallback_empty_api_key(monkeypatch):
     """estimate_item_price returns fallback when OPENAI_API_KEY is empty."""
-    from ai_engine import estimate_item_price
 
     monkeypatch.setenv('OPENAI_API_KEY', '')
     price, status = estimate_item_price('Bread', 'Bakery')
