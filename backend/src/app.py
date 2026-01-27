@@ -1,7 +1,9 @@
 import logging
 import sys
+import os
 import threading
 from typing import Tuple, Any
+
 
 from flask import Flask, jsonify, request, Response, g
 from flask_cors import CORS
@@ -37,7 +39,8 @@ CORS(app)
 
 # Prometheus metrics
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
-REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency')
+
+
 
 @app.route('/health')
 def health() -> Tuple[Response, int]:
@@ -294,7 +297,9 @@ def delete_item(item_id: str) -> Any:
         return jsonify({'error': 'Internal error'}), 500
 
 def run_metrics_server():
-    run_simple('0.0.0.0', 8081, make_wsgi_app(), threaded=True)
+    port = int(os.environ.get('METRICS_PORT', 8081))
+    run_simple('0.0.0.0', port, make_wsgi_app(), threaded=True)
+
 
 if __name__ == '__main__':
     threading.Thread(target=run_metrics_server, daemon=True).start()

@@ -101,11 +101,13 @@ epics:
 
   - id: 9
     title: "Metrics & Documentation"
-    status: "NOT_STARTED"
+    status: "IN_PROGRESS"
     stories:
       - id: "9.1"
         title: "Prometheus /metrics"
-        done: false
+        done: true
+        status: "done"
+
       - id: "9.2"
         title: "Startup Guide"
         done: false
