@@ -42,11 +42,15 @@ CORS(app)
 
 # --- Metrics ---
 
-# --- Metrics ---
-
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request duration in seconds', ['method', 'endpoint'])
 DB_CONNECTIONS = Gauge('db_connections_active', 'Number of active MongoDB connections')
+APP_UPTIME = Gauge('application_start_time_seconds', 'Application start time')
+AI_ESTIMATIONS = Counter('ai_estimations_total', 'Total AI price estimations')
+AI_LATENCY = Histogram('ai_estimation_duration_seconds', 'AI estimation duration in seconds')
+AUTH_EVENTS = Counter('auth_events_total', 'Authentication events', ['event', 'status'])
+ITEMS_TOTAL = Gauge('items_total', 'Total items in the database')
+APP_UPTIME.set(time.time())
 
 # Custom Collector for DB Connections (Polling/Scrape-time)
 class DbConnectionsCollector:
@@ -66,9 +70,14 @@ def update_db_metrics():
     """Updates DB metrics. Can be called periodically or before scrape."""
     try:
         if db.db_client:
+            # DB Connections
             status = db.db_client.admin.command('serverStatus')
             current = status.get('connections', {}).get('current', 0)
             DB_CONNECTIONS.set(current)
+            
+            # Items Count
+            count = db.db['items'].count_documents({})
+            ITEMS_TOTAL.set(count)
     except Exception as e:
         logger.error(f"Error updating DB metrics: {e}")
 
@@ -133,8 +142,10 @@ def register() -> Tuple[Response, int]:
     )
     
     if errors:
+        AUTH_EVENTS.labels(event='register', status='failure').inc()
         return error_response('Registration failed', 400, errors)
     
+    AUTH_EVENTS.labels(event='register', status='success').inc()
     return jsonify({'message': 'Group created!', 'details': auth_data}), 201
 
 @app.route('/api/auth/join', methods=['POST'])
@@ -151,8 +162,10 @@ def join() -> Tuple[Response, int]:
     )
     
     if errors:
+        AUTH_EVENTS.labels(event='join', status='failure').inc()
         return error_response('Join failed', 400, errors)
     
+    AUTH_EVENTS.labels(event='join', status='success').inc()
     return jsonify({'message': 'Joined successfully!', 'details': auth_data}), 201
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -165,8 +178,10 @@ def login() -> Tuple[Response, int]:
     token, errors = login_user(data['email'], data['password'])
     
     if errors:
+        AUTH_EVENTS.labels(event='login', status='failure').inc()
         return error_response('Authentication failed', 401, errors)
     
+    AUTH_EVENTS.labels(event='login', status='success').inc()
     return jsonify({'token': token}), 200
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -185,8 +200,6 @@ def get_current_user() -> Tuple[Response, int]:
 
 @app.route('/api/items', methods=['GET'])
 @auth_required
-def get_items() -> Tuple[Response, int]:
-    """Fetch all items for the user's group."""
 def get_items() -> Tuple[Response, int]:
     """Fetch all items for the user's group."""
     # REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()  <-- Removed manual increment
@@ -231,7 +244,12 @@ def create_item() -> Tuple[Response, int]:
         # Background AI Estimation
         def run_ai_task(cid: Any, name: str, cat: str):
             try:
+                AI_ESTIMATIONS.inc()
+                start_time = time.time()
                 price, status = estimate_item_price(name, cat)
+                duration = time.time() - start_time
+                AI_LATENCY.observe(duration)
+                
                 database['items'].update_one(
                     {'_id': cid}, 
                     {'$set': {'price_nis': price, 'ai_status': status}}

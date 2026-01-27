@@ -403,8 +403,24 @@ async function updateQuantity(itemId, currentQty, delta) {
 }
 
 /** Delete item */
-async function deleteItem(itemId) {
-    if (!confirm('Delete this item?')) return;
+async function deleteItem(itemId, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    // Pause polling to prevent DOM updates closing the modal
+    STATE.isSubmitting = true;
+
+    // Small delay to ensure event is settled (browser quirk)
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const confirmed = confirm('Delete this item?');
+
+    // Resume polling
+    STATE.isSubmitting = false;
+
+    if (!confirmed) return;
 
     // Optimistic removal
     const original = [...STATE.items];
@@ -526,15 +542,15 @@ function renderItemCard(item, isPending, isMyItem) {
     // Manager Actions
     const managerActions = STATE.user.role === 'MANAGER' ? `
         ${isPending ? `
-            <button class="btn btn-success btn-sm" onclick="updateItemStatus('${item._id}', 'APPROVED')">Approve</button>
-            <button class="btn btn-danger btn-sm" onclick="updateItemStatus('${item._id}', 'REJECTED')">Reject</button>
+            <button type="button" class="btn btn-success btn-sm" onclick="updateItemStatus('${item._id}', 'APPROVED')">Approve</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="updateItemStatus('${item._id}', 'REJECTED')">Reject</button>
         ` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Delete</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}', event)">Delete</button>
     ` : '';
 
     // My Item Actions (Remove rejected)
     const myActions = (isMyItem && item.status === 'REJECTED') ? `
-        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Remove</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}', event)">Remove</button>
     ` : '';
 
     return `
