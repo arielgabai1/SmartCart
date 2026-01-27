@@ -2,6 +2,9 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
+# Set env var for testing before imports run
+os.environ['JWT_SECRET'] = 'test-secret-value'
+
 from unittest.mock import MagicMock, patch
 import pytest
 from bson import ObjectId

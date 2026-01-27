@@ -1,7 +1,16 @@
+/**
+ * SmartCart Helper Application
+ * Monolithic script handling Auth, API, State, and UI logic.
+ */
+
+// --- Configuration ---
+
 const CONFIG = {
     API_BASE: '/api',
     POLLING_INTERVAL: 3000
 };
+
+// --- State Management ---
 
 const STATE = {
     user: null,
@@ -12,34 +21,46 @@ const STATE = {
     isSubmitting: false
 };
 
-// ==================== AUTH SERVICE ====================
+// --- Auth Service ---
+
 const AuthService = {
+    /** Retrieve JWT from storage */
     getToken: () => localStorage.getItem('sc_token'),
 
+    /** Logout and redirect */
     logout: () => {
         localStorage.removeItem('sc_token');
         window.location.href = 'login.html';
     },
 
+    /** Decode stored JWT to get user info */
     getUser: () => {
         const token = AuthService.getToken();
         if (!token) return null;
         try {
-            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-            return payload;
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            return JSON.parse(atob(base64));
         } catch (e) {
             console.error('JWT parse error:', e);
             return null;
         }
     },
 
+    /** Check if session is valid */
     isAuthenticated: () => {
         const user = AuthService.getUser();
         return user && user.exp * 1000 > Date.now();
     }
 };
 
-// ==================== API SERVICE ====================
+// --- API Service ---
+
+/**
+ * authenticated fetch wrapper
+ * @param {string} url - endpoint URL
+ * @param {Object} options - fetch options
+ */
 async function secureFetch(url, options = {}) {
     const headers = {
         'Content-Type': 'application/json',
@@ -59,7 +80,8 @@ async function secureFetch(url, options = {}) {
     }
 }
 
-// ==================== INITIALIZATION ====================
+// --- Initialization ---
+
 document.addEventListener('DOMContentLoaded', () => {
     if (!AuthService.isAuthenticated()) {
         AuthService.logout();
@@ -73,128 +95,116 @@ document.addEventListener('DOMContentLoaded', () => {
     startPolling();
 });
 
+/** Initialize Theme (Light/Dark) */
 function initTheme() {
     const savedTheme = localStorage.getItem('sc_theme');
-    // Default to light mode if no preference saved
-    if (savedTheme === 'dark') {
+    const isDark = savedTheme === 'dark';
+
+    // Toggle class based on saved preference (defaulting to light if null/light)
+    if (isDark) {
         document.body.classList.remove('light-mode');
-        updateThemeIcon(false);
     } else {
         document.body.classList.add('light-mode');
-        updateThemeIcon(true);
     }
+    updateThemeIcon(!isDark);
 }
 
+/** Update Theme Icon SVG */
 function updateThemeIcon(isLight) {
     const icon = document.getElementById('theme-icon');
-    if (icon) {
-        // Use SVG icons for sun/moon
-        if (isLight) {
-            icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-        } else {
-            icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-        }
+    if (!icon) return;
+
+    if (isLight) {
+        // Sun icon
+        icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+    } else {
+        // Moon icon
+        icon.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
     }
 }
 
+/** Initialize Static UI Elements */
 function initUI() {
-    // Set user info in header
-    const userNameEl = document.getElementById('user-name-display');
-    const userRoleEl = document.getElementById('user-role-display');
-    const userAvatarEl = document.getElementById('user-avatar');
-    const groupNameEl = document.getElementById('group-name-display');
-    const sidebarJoinCode = document.getElementById('sidebar-join-code');
+    // Header Info
+    setText('user-name-display', STATE.user.user_name || 'User');
+    setText('group-name-display', STATE.user.group_name || 'My Group');
+    setText('sidebar-join-code', STATE.user.join_code || '------');
 
-    if (userNameEl) userNameEl.textContent = STATE.user.user_name || 'User';
+    // Role Badge
+    const userRoleEl = document.getElementById('user-role-display');
     if (userRoleEl) {
         userRoleEl.textContent = STATE.user.role;
         userRoleEl.style.color = STATE.user.role === 'MANAGER' ? 'var(--accent-info)' : 'var(--accent-success)';
     }
+
+    // Avatar
+    const userAvatarEl = document.getElementById('user-avatar');
     if (userAvatarEl) {
         userAvatarEl.textContent = (STATE.user.user_name || 'U').charAt(0).toUpperCase();
     }
-    if (groupNameEl) groupNameEl.textContent = STATE.user.group_name || 'My Group';
-    if (sidebarJoinCode) sidebarJoinCode.textContent = STATE.user.join_code || '------';
 
-    // Manager-specific UI
-    if (STATE.user.role === 'MANAGER') {
-        const clearBtn = document.getElementById('clear-all-btn');
-        const membersSection = document.getElementById('members-section');
-        const formTitle = document.getElementById('form-title');
-        const submitBtn = document.getElementById('submit-btn');
+    // Role-based Element Visibility
+    const isManager = STATE.user.role === 'MANAGER';
 
-        if (clearBtn) clearBtn.style.display = 'flex';
-        if (membersSection) membersSection.style.display = 'block';
-        if (formTitle) formTitle.textContent = 'Add New Item';
-        if (submitBtn) submitBtn.textContent = 'Add Item';
-    } else {
-        const formTitle = document.getElementById('form-title');
-        const submitBtn = document.getElementById('submit-btn');
+    setDisplay('clear-all-btn', isManager ? 'flex' : 'none');
+    setDisplay('members-section', isManager ? 'block' : 'none');
 
-        if (formTitle) formTitle.textContent = 'Request Item';
-        if (submitBtn) submitBtn.textContent = 'Submit Request';
-    }
+    setText('form-title', isManager ? 'Add New Item' : 'Request Item');
+    setText('submit-btn', isManager ? 'Add Item' : 'Submit Request');
 }
 
+// --- Event Listeners ---
+
 function setupEventListeners() {
-    // Sidebar toggle
-    const menuToggle = document.getElementById('menu-toggle');
+    // Sidebar
     const sidebar = document.getElementById('sidebar');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
-    const sidebarClose = document.getElementById('sidebar-close');
+    const overlay = document.getElementById('sidebar-overlay');
 
-    const openSidebar = () => {
-        sidebar?.classList.add('open');
-        sidebarOverlay?.classList.add('active');
-        document.body.style.overflow = 'hidden';
+    const toggleSidebar = (show) => {
+        if (show) {
+            sidebar?.classList.add('open');
+            overlay?.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        } else {
+            sidebar?.classList.remove('open');
+            overlay?.classList.remove('active');
+            document.body.style.overflow = '';
+        }
     };
 
-    const closeSidebar = () => {
-        sidebar?.classList.remove('open');
-        sidebarOverlay?.classList.remove('active');
-        document.body.style.overflow = '';
-    };
+    document.getElementById('menu-toggle')?.addEventListener('click', () => toggleSidebar(true));
+    document.getElementById('sidebar-close')?.addEventListener('click', () => toggleSidebar(false));
+    overlay?.addEventListener('click', () => toggleSidebar(false));
 
-    menuToggle?.addEventListener('click', openSidebar);
-    sidebarClose?.addEventListener('click', closeSidebar);
-    sidebarOverlay?.addEventListener('click', closeSidebar);
-
-    // Copy join code
-    const copyCodeCard = document.getElementById('copy-code-card');
-    copyCodeCard?.addEventListener('click', () => {
+    // Clipboard
+    document.getElementById('copy-code-card')?.addEventListener('click', () => {
         const code = STATE.user.join_code;
         if (code) {
             navigator.clipboard.writeText(code);
-            alert(`Invite code "${code}" copied to clipboard!`);
+            alert(`Invite code "${code}" copied!`);
         }
     });
 
-    // Logout
-    const logoutBtn = document.getElementById('logout-btn');
-    logoutBtn?.addEventListener('click', () => {
-        if (confirm('Are you sure you want to sign out?')) {
-            AuthService.logout();
-        }
+    // Auth
+    document.getElementById('logout-btn')?.addEventListener('click', () => {
+        if (confirm('Sign out?')) AuthService.logout();
     });
 
-    // Form submission
-    const itemForm = document.getElementById('item-form');
-    itemForm?.addEventListener('submit', handleFormSubmit);
+    // Forms
+    document.getElementById('item-form')?.addEventListener('submit', handleFormSubmit);
+    document.getElementById('clear-all-btn')?.addEventListener('click', deleteAllItems);
 
-    // Clear all
-    const clearAllBtn = document.getElementById('clear-all-btn');
-    clearAllBtn?.addEventListener('click', deleteAllItems);
-
-    // Theme toggle
-    const themeToggle = document.getElementById('theme-toggle');
-    themeToggle?.addEventListener('click', () => {
+    // Theme
+    document.getElementById('theme-toggle')?.addEventListener('click', () => {
         const isLight = document.body.classList.toggle('light-mode');
         localStorage.setItem('sc_theme', isLight ? 'light' : 'dark');
         updateThemeIcon(isLight);
     });
 }
 
-// ==================== DATA FETCHING ====================
+// --- Data Fetching ---
+
+/** Fetch and refresh items list */
 async function fetchItems() {
     try {
         const response = await secureFetch(`${CONFIG.API_BASE}/items`, { cache: 'no-store' });
@@ -203,6 +213,7 @@ async function fetchItems() {
         const items = await response.json();
         const hash = JSON.stringify(items);
 
+        // Update only if data changed
         if (hash !== STATE.lastItemsHash) {
             STATE.items = items;
             STATE.lastItemsHash = hash;
@@ -210,348 +221,285 @@ async function fetchItems() {
             updateStats();
         }
     } catch (err) {
-        console.error('Error fetching items:', err);
+        console.error('Fetch items error:', err);
     }
 }
 
+/** Fetch and refresh members (Managers only) */
 async function fetchMembers(forceRefresh = false) {
     if (STATE.user.role !== 'MANAGER') return;
 
     try {
-        // Add cache-busting timestamp to ensure fresh data
-        const url = forceRefresh
-            ? `${CONFIG.API_BASE}/groups/members?t=${Date.now()}`
-            : `${CONFIG.API_BASE}/groups/members`;
+        const url = `${CONFIG.API_BASE}/groups/members${forceRefresh ? '?t=' + Date.now() : ''}`;
         const response = await secureFetch(url, { cache: 'no-store' });
         if (!response.ok) return;
 
         const members = await response.json();
-        STATE.members = members;
-        STATE.lastMembersHash = JSON.stringify(members);
-        renderMembers();
-    } catch (err) {
-        console.error('Error fetching members:', err);
-    }
+        const hash = JSON.stringify(members);
 
+        if (hash !== STATE.lastMembersHash) {
+            STATE.members = members;
+            STATE.lastMembersHash = hash;
+            renderMembers();
+        }
+    } catch (err) {
+        console.error('Fetch members error:', err);
+    }
 }
 
+/** Sync user role/data from server */
 async function syncUserIdentity() {
     try {
         const response = await secureFetch(`${CONFIG.API_BASE}/auth/me`, { cache: 'no-store' });
         if (!response.ok) return;
 
         const freshUser = await response.json();
+        const roleChanged = freshUser.role !== STATE.user.role;
 
-        // Critical: Detect Role Change
-        if (freshUser.role !== STATE.user.role) {
-            console.log(`Role changed from ${STATE.user.role} to ${freshUser.role}. Updating UI...`);
-            STATE.user = { ...STATE.user, ...freshUser };
+        STATE.user = { ...STATE.user, ...freshUser };
 
-            // Full UI reset to update sidebar, buttons, and sections
-            initUI();
+        if (roleChanged) {
+            console.log(`Role updated: ${freshUser.role}`);
+            initUI(); // Re-bind UI elements
+            updateStats(); // Re-check pending section visibility
 
-            // Force re-check of pending section visibility with fresh role AND count
-            const pendingCount = STATE.items.filter(i => i.status === 'PENDING').length;
-            const container = document.getElementById('pending-section');
-            if (container) {
-                container.style.display = (freshUser.role === 'MANAGER' && pendingCount > 0) ? 'block' : 'none';
-            }
-
-            // Single render call after all UI state is updated
-            renderItems();
-
-            // If we gained Manager access, fetch members immediately
             if (freshUser.role === 'MANAGER') fetchMembers(true);
-        } else {
-            // Just update basic details
-            STATE.user = { ...STATE.user, ...freshUser };
         }
     } catch (err) {
-        console.error('Error syncing identity:', err);
+        console.error('Identity sync error:', err);
     }
 }
 
+// --- Item Logic ---
 
-// ==================== ITEM OPERATIONS ====================
+/** Handle new item submission */
 async function handleFormSubmit(e) {
     e.preventDefault();
+    if (STATE.isSubmitting) return;
 
     const nameInput = document.getElementById('name');
     const categoryInput = document.getElementById('category');
     const quantityInput = document.getElementById('quantity');
 
     const name = nameInput.value.trim();
-    const category = categoryInput.value;
-    const quantity = parseInt(quantityInput.value) || 1;
-
     if (!name) return;
 
-    // Pause polling to prevent race condition overwriting optimistic UI
     STATE.isSubmitting = true;
 
-    // Optimistic Update
-    const tempId = 'temp-' + Date.now();
-    const optimisticItem = {
-        _id: tempId,
-        name: name,
-        category: category,
-        quantity: quantity,
+    // Optimistic payload
+    const payload = {
+        name,
+        category: categoryInput.value,
+        quantity: parseInt(quantityInput.value) || 1
+    };
+
+    // Prepare rollback state
+    const originalItems = [...STATE.items];
+
+    // Optimistic UI Update
+    STATE.items.push({
+        _id: 'temp-' + Date.now(),
+        ...payload,
         price_nis: 0,
         status: STATE.user.role === 'MANAGER' ? 'APPROVED' : 'PENDING',
         submitted_by: STATE.user.user_id,
         submitted_by_name: STATE.user.user_name || 'Me',
         ai_status: 'CALCULATING',
         created_at: new Date().toISOString()
-    };
+    });
 
-    // Store original state for rollback
-    const originalItems = [...STATE.items];
-    
-    // Apply optimistic state
-    STATE.items.push(optimisticItem);
     renderItems();
     updateStats();
 
-    // Clear form immediately
+    // Reset form
     nameInput.value = '';
     quantityInput.value = '1';
 
     try {
-        const payload = { name, category, quantity };
-        const response = await secureFetch(`${CONFIG.API_BASE}/items`, {
+        const res = await secureFetch(`${CONFIG.API_BASE}/items`, {
             method: 'POST',
             body: JSON.stringify(payload)
         });
 
-        if (response.ok) {
-            await fetchItems(); // Wait for sync before releasing lock
-        } else {
-            throw new Error('Server responded with ' + response.status);
-        }
+        if (!res.ok) throw new Error('API Error');
+        await fetchItems(); // Sync real data
+
     } catch (err) {
-        console.error('Error adding item:', err);
-        // Rollback
-        STATE.items = originalItems;
+        console.error('Submit error:', err);
+        STATE.items = originalItems; // Rollback
         renderItems();
         updateStats();
         alert('Failed to add item. Please try again.');
-        
-        // Restore form values
+
+        // Restore input
         nameInput.value = name;
-        quantityInput.value = quantity;
     } finally {
         STATE.isSubmitting = false;
     }
 }
 
+/** Update status (Approve/Reject) */
 async function updateItemStatus(itemId, newStatus) {
     try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, {
+        const res = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, {
             method: 'PUT',
             body: JSON.stringify({ status: newStatus })
         });
-        if (response.ok) fetchItems();
-    } catch (err) {
-        console.error('Error updating status:', err);
-    }
+        if (res.ok) fetchItems();
+    } catch (err) { console.error(err); }
 }
 
+/** Update quantity */
 async function updateQuantity(itemId, currentQty, delta) {
     const newQty = currentQty + delta;
     if (newQty < 1) return;
 
     try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, {
+        const res = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, {
             method: 'PUT',
             body: JSON.stringify({ quantity: newQty })
         });
-        if (response.ok) fetchItems();
-    } catch (err) {
-        console.error('Error updating quantity:', err);
-    }
+        if (res.ok) fetchItems();
+    } catch (err) { console.error(err); }
 }
 
+/** Delete item */
 async function deleteItem(itemId) {
     if (!confirm('Delete this item?')) return;
 
-    // Optimistic UI update: Remove item immediately
-    const originalItems = [...STATE.items];
+    // Optimistic removal
+    const original = [...STATE.items];
     STATE.items = STATE.items.filter(i => i._id !== itemId);
-    renderItems(); // Re-render immediately so user sees it gone
+    renderItems();
 
     try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, {
-            method: 'DELETE'
-        });
-        if (!response.ok) {
-            // Ignore 404s (already deleted), only alert on real errors
-            if (response.status === 404) {
-                console.warn('Item already deleted on server');
-                fetchItems(); // Sync just in case
-                return;
-            }
-
-            // Revert on failure
-            STATE.items = originalItems;
-            renderItems();
-            alert('Failed to delete item.');
-        } else {
-            // Confirm with server state
-            fetchItems();
-        }
+        const res = await secureFetch(`${CONFIG.API_BASE}/items/${itemId}`, { method: 'DELETE' });
+        if (!res.ok && res.status !== 404) throw new Error('Delete failed');
+        fetchItems();
     } catch (err) {
-        console.error('Error deleting item:', err);
-        // Revert on error
-        STATE.items = originalItems;
+        console.error(err);
+        STATE.items = original;
         renderItems();
+        alert('Could not delete item.');
     }
 }
 
+/** Clear all items (Manager) */
 async function deleteAllItems() {
-    if (!confirm('Clear the entire shopping list? This cannot be undone.')) return;
-
+    if (!confirm('Clear the entire shopping list?')) return;
     try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/items/clear`, {
-            method: 'DELETE'
-        });
-        if (response.ok) fetchItems();
-    } catch (err) {
-        console.error('Error clearing items:', err);
-    }
+        const res = await secureFetch(`${CONFIG.API_BASE}/items/clear`, { method: 'DELETE' });
+        if (res.ok) fetchItems();
+    } catch (err) { console.error(err); }
 }
 
-// ==================== MEMBER OPERATIONS ====================
-async function promoteMember(userId) {
-    if (!confirm('Promote this member to Manager?')) return;
+// --- Member Logic ---
 
+async function manageMember(userId, action, payload = {}) {
     try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/groups/members/${userId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ role: 'MANAGER' })
+        const res = await secureFetch(`${CONFIG.API_BASE}/groups/members/${userId}`, {
+            method: action,
+            body: action === 'PUT' ? JSON.stringify(payload) : undefined
         });
-        console.log('Promote response:', response.status, response.ok);
-        if (response.ok) {
-            // Force full reload to update all permissions/UI
-            window.location.reload();
+
+        if (res.ok) {
+            if (action === 'PUT') window.location.reload(); // Reload for permission sync
+            else fetchMembers();
         } else {
-            const err = await response.json();
-            console.error('Promote failed:', err);
-            alert('Failed to promote member: ' + (err.error || 'Unknown error'));
+            const err = await res.json();
+            alert(`Action failed: ${err.error}`);
         }
-    } catch (err) {
-        console.error('Error promoting member:', err);
-    }
+    } catch (e) { console.error(e); }
 }
 
-async function removeMember(userId) {
-    if (!confirm('Remove this member from the group? Their account will be deleted.')) return;
+window.promoteMember = (id) => confirm('Promote to Manager?') && manageMember(id, 'PUT', { role: 'MANAGER' });
+window.demoteMember = (id) => confirm('Demote to Member?') && manageMember(id, 'PUT', { role: 'MEMBER' });
+window.removeMember = (id) => confirm('Remove member?') && manageMember(id, 'DELETE');
 
-    try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/groups/members/${userId}`, {
-            method: 'DELETE'
-        });
-        if (response.ok) fetchMembers();
-    } catch (err) {
-        console.error('Error removing member:', err);
-    }
-}
+// Expose functions globally for HTML onclick handlers
+window.updateItemStatus = updateItemStatus;
+window.updateQuantity = updateQuantity;
+window.deleteItem = deleteItem;
 
-async function demoteMember(userId) {
-    if (!confirm('Demote this manager to regular member?')) return;
+// --- Rendering ---
 
-    try {
-        const response = await secureFetch(`${CONFIG.API_BASE}/groups/members/${userId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ role: 'MEMBER' })
-        });
-        console.log('Demote response:', response.status, response.ok);
-        if (response.ok) {
-            // Force full reload to update all permissions/UI
-            window.location.reload();
-        } else {
-            const err = await response.json();
-            console.error('Demote failed:', err);
-            alert('Failed to demote member: ' + (err.error || 'Unknown error'));
-        }
-    } catch (err) {
-        console.error('Error demoting member:', err);
-    }
-}
-
-// ==================== RENDERING ====================
 function renderItems() {
     const container = document.getElementById('items-container');
-    const pendingContainer = document.getElementById('pending-container');
-    const myItemsContainer = document.getElementById('my-items-container');
-    const myItemsSection = document.getElementById('my-items-section');
     if (!container) return;
 
-    // Separate items by status
-    const approvedItems = STATE.items.filter(i => i.status === 'APPROVED');
-    const pendingItems = STATE.items.filter(i => i.status === 'PENDING');
-    const rejectedItems = STATE.items.filter(i => i.status === 'REJECTED');
+    const { role, user_id } = STATE.user;
+    const items = STATE.items;
 
-    // For regular users: show their own pending/rejected items
-    if (STATE.user.role !== 'MANAGER' && myItemsContainer && myItemsSection) {
-        const myItems = STATE.items.filter(i =>
-            i.submitted_by === STATE.user.user_id &&
-            (i.status === 'PENDING' || i.status === 'REJECTED')
-        );
+    const approved = items.filter(i => i.status === 'APPROVED');
+    const pending = items.filter(i => i.status === 'PENDING');
+    const rejected = items.filter(i => i.status === 'REJECTED');
 
-        if (myItems.length > 0) {
-            myItemsSection.style.display = 'block';
-            myItemsContainer.innerHTML = myItems.map((item, index) => renderItemCard(item, index, false, true)).join('');
-        } else {
-            myItemsSection.style.display = 'none';
-        }
+    // 1. My Submissions Section (Non-Managers)
+    if (role !== 'MANAGER') {
+        const myItems = items.filter(i => i.submitted_by === user_id && ['PENDING', 'REJECTED'].includes(i.status));
+        renderList('my-items-container', myItems, (item) => renderItemCard(item, false, true));
+        setDisplay('my-items-section', myItems.length > 0 ? 'block' : 'none');
     }
 
-    // Render pending items (for managers)
-    if (pendingContainer && STATE.user.role === 'MANAGER') {
-        if (pendingItems.length === 0) {
-            pendingContainer.innerHTML = '<p class="text-muted" style="padding: 1rem;">No pending requests.</p>';
-        } else {
-            pendingContainer.innerHTML = pendingItems.map((item, index) => renderItemCard(item, index, true, false)).join('');
-        }
+    // 2. Pending Section (Manager Only)
+    if (role === 'MANAGER') {
+        renderList('pending-container', pending, (item) => renderItemCard(item, true, false));
     }
 
-    // Render main shopping list (approved only for regular users, approved + rejected for managers)
-    const mainListItems = STATE.user.role === 'MANAGER' ? [...approvedItems, ...rejectedItems] : approvedItems;
+    // 3. Main List
+    // Managers see Approved + Rejected (history), Members see Approved only
+    const mainList = role === 'MANAGER' ? [...approved, ...rejected] : approved;
 
-    if (mainListItems.length === 0) {
+    if (mainList.length === 0) {
         container.innerHTML = `
             <div class="empty-state fade-in">
                 <div class="empty-state-icon">&#128722;</div>
                 <p class="empty-state-text">No items yet. Add your first item!</p>
-            </div>
-        `;
-        return;
+            </div>`;
+    } else {
+        container.innerHTML = mainList.map(item => renderItemCard(item, false, false)).join('');
     }
-
-    container.innerHTML = mainListItems.map((item, index) => renderItemCard(item, index, false, false)).join('');
 }
 
-function renderItemCard(item, index, isPending, isMyItem = false) {
-    const totalPrice = ((item.price_nis || 0) * (item.quantity || 1)).toFixed(2);
-    const isCalculating = item.ai_status === 'CALCULATING';
-    const isError = item.ai_status === 'ERROR';
+function renderList(containerId, items, renderFn) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
 
-    // Always show status pill for my items, or when not pending
-    const showStatus = isMyItem || !isPending;
-
-    // Helper to format name nicely
-    let submitterName = escapeHtml(item.submitted_by_name || 'Group Member');
-    // If it looks like a raw ObjectID (hex string of 24 chars), fallback to generic name
-    if (/^[0-9a-fA-F]{24}$/.test(submitterName)) {
-        submitterName = 'Group Member';
+    if (items.length === 0) {
+        el.innerHTML = '<p class="text-muted" style="padding: 1rem;">No items.</p>';
+        return;
     }
+    el.innerHTML = items.map(renderFn).join('');
+}
+
+function renderItemCard(item, isPending, isMyItem) {
+    const total = ((item.price_nis || 0) * (item.quantity || 1)).toFixed(2);
+    const isError = item.ai_status === 'ERROR';
+    const isCalc = item.ai_status === 'CALCULATING';
+
+    const showStatus = isMyItem || !isPending;
+    const submitter = escapeHtml(item.submitted_by_name || 'Member');
+
+    // Manager Actions
+    const managerActions = STATE.user.role === 'MANAGER' ? `
+        ${isPending ? `
+            <button class="btn btn-success btn-sm" onclick="updateItemStatus('${item._id}', 'APPROVED')">Approve</button>
+            <button class="btn btn-danger btn-sm" onclick="updateItemStatus('${item._id}', 'REJECTED')">Reject</button>
+        ` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Delete</button>
+    ` : '';
+
+    // My Item Actions (Remove rejected)
+    const myActions = (isMyItem && item.status === 'REJECTED') ? `
+        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Remove</button>
+    ` : '';
 
     return `
-        <div class="item-card fade-in" style="animation-delay: ${index * 0.05}s">
+        <div class="item-card fade-in">
             <div class="item-header">
                 <div>
                     <div class="item-title">${escapeHtml(item.name)}</div>
-                    <div class="item-submitter">by ${submitterName}</div>
+                    <div class="item-submitter">by ${submitter}</div>
                 </div>
                 ${showStatus ? `<span class="status-pill status-${item.status}">${item.status}</span>` : ''}
             </div>
@@ -559,115 +507,98 @@ function renderItemCard(item, index, isPending, isMyItem = false) {
                 <div class="item-meta">
                     <span class="meta-tag">${item.category || 'OTHER'}</span>
                     <div class="quantity-control">
-                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity || 1}, -1)">-</button>
-                        <span class="quantity-value">${item.quantity || 1}</span>
-                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity || 1}, 1)">+</button>
+                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, -1)">-</button>
+                        <span class="quantity-value">${item.quantity}</span>
+                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, 1)">+</button>
                     </div>
-                    ${isCalculating ? '<span class="text-muted">Calculating...</span>' :
+                    ${isCalc ? '<span class="text-muted">Calculating...</span>' :
             isError ? '<span class="price-error">Price unavailable</span>' :
-                `<span class="price-tag">${totalPrice} NIS</span>`}
+                `<span class="price-tag">${total} NIS</span>`}
                 </div>
-                ${STATE.user.role === 'MANAGER' ? `
-                    <div class="item-actions">
-                        ${isPending ? `
-                            <button class="btn btn-success btn-sm" onclick="updateItemStatus('${item._id}', 'APPROVED')">Approve</button>
-                            <button class="btn btn-danger btn-sm" onclick="updateItemStatus('${item._id}', 'REJECTED')">Reject</button>
-                        ` : ''}
-                        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Delete</button>
-                    </div>
-                ` : (isMyItem && item.status === 'REJECTED') ? `
-                    <div class="item-actions">
-                        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${item._id}')">Remove</button>
-                    </div>
-                ` : ''}
+                <div class="item-actions">
+                    ${managerActions || myActions}
+                </div>
             </div>
         </div>
     `;
 }
 
-
 function renderMembers() {
     const container = document.getElementById('members-list');
-    if (!container) return;
-
-    if (STATE.members.length === 0) {
-        container.innerHTML = '<p class="text-muted" style="padding: 0.5rem;">No members found.</p>';
+    if (!container || !STATE.members.length) {
+        if (container) container.innerHTML = '<p class="text-muted">No members.</p>';
         return;
     }
 
-    container.innerHTML = STATE.members.map(member => {
-        const isCurrentUser = member.id === STATE.user.user_id;
-        const isManager = member.role === 'MANAGER';
+    container.innerHTML = STATE.members.map(m => {
+        const isMe = m.id === STATE.user.user_id;
+        const isMgr = m.role === 'MANAGER';
 
         return `
             <div class="member-card">
                 <div class="member-info">
-                    <div class="member-name">${escapeHtml(member.user_name || 'Unknown')}</div>
-                    <div class="member-meta">${escapeHtml(member.email)} | ${member.role}</div>
+                    <div class="member-name">${escapeHtml(m.user_name)}</div>
+                    <div class="member-meta">${escapeHtml(m.email)} | ${m.role}</div>
                 </div>
-                ${!isCurrentUser ? `
+                ${!isMe ? `
                     <div class="member-actions">
-                        ${!isManager ? `
-                            <button class="btn btn-sm btn-ghost" onclick="promoteMember('${member.id}')">Promote</button>
-                        ` : `
-                            <button class="btn btn-sm btn-ghost" onclick="demoteMember('${member.id}')">Demote</button>
-                        `}
-                        <button class="btn btn-sm btn-danger" onclick="removeMember('${member.id}')">Remove</button>
+                        <button class="btn btn-sm btn-ghost" onclick="${isMgr ? 'demoteMember' : 'promoteMember'}('${m.id}')">
+                            ${isMgr ? 'Demote' : 'Promote'}
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
                     </div>
-                ` : '<span class="text-muted" style="font-size: 0.7rem;">You</span>'}
+                ` : '<span class="text-muted text-sm">You</span>'}
             </div>
         `;
     }).join('');
 }
 
-
-
 function updateStats() {
-    // Only count APPROVED items in the cart total
-    const total = STATE.items.reduce((sum, item) => {
-        if (item.status === 'APPROVED') {
-            return sum + ((item.price_nis || 0) * (item.quantity || 1));
-        }
-        return sum;
-    }, 0);
+    const approved = STATE.items.filter(i => i.status === 'APPROVED');
+    const pending = STATE.items.filter(i => i.status === 'PENDING');
 
-    const approvedCount = STATE.items.filter(i => i.status === 'APPROVED').length;
-    const pendingCount = STATE.items.filter(i => i.status === 'PENDING').length;
+    const total = approved.reduce((sum, i) => sum + ((i.price_nis || 0) * (i.quantity || 1)), 0);
 
-    const totalEl = document.getElementById('cart-total');
-    const approvedEl = document.getElementById('approved-count');
-    const pendingEl = document.getElementById('pending-count');
+    setText('cart-total', `${total.toFixed(2)} NIS`);
+    setText('approved-count', approved.length);
+    setText('pending-count', pending.length);
 
-    if (totalEl) totalEl.textContent = total.toFixed(2) + ' NIS';
-    if (approvedEl) approvedEl.textContent = approvedCount;
-    if (pendingEl) pendingEl.textContent = pendingCount;
-
-    // Show/hide pending section based on role and pending count
+    // Toggle Pending Section Visibility
     const pendingSection = document.getElementById('pending-section');
     if (pendingSection) {
-        pendingSection.style.display = (STATE.user.role === 'MANAGER' && pendingCount > 0) ? 'block' : 'none';
+        pendingSection.style.display = (STATE.user.role === 'MANAGER' && pending.length > 0) ? 'block' : 'none';
     }
 }
 
-// ==================== UTILITIES ====================
+// --- Utils ---
+
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
+function setDisplay(id, display) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = display;
+}
+
 function startPolling() {
-    // Initial fetch
     fetchItems();
     fetchMembers();
     syncUserIdentity();
 
     setInterval(() => {
-        if (document.hidden) return; // Don't poll if tab is backgrounded
-        if (STATE.isSubmitting) return; // Don't poll if user is submitting (avoids race condition)
-        
-        fetchItems();
-        fetchMembers();
-        syncUserIdentity();
+        if (!document.hidden && !STATE.isSubmitting) {
+            fetchItems();
+            fetchMembers();
+            syncUserIdentity();
+        }
     }, CONFIG.POLLING_INTERVAL);
 }

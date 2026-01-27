@@ -2,27 +2,29 @@ import logging
 import sys
 import os
 import threading
-from typing import Tuple, Any
-
+from typing import Tuple, Any, Dict
 
 from flask import Flask, jsonify, request, Response, g
 from flask_cors import CORS
-from prometheus_client import make_wsgi_app, Counter, Histogram
-from pymongo.errors import ConnectionFailure
+from dotenv import load_dotenv
+from prometheus_client import make_wsgi_app, Counter
 from bson import ObjectId
-from bson.errors import InvalidId
 from pythonjsonlogger import jsonlogger
-from werkzeug.exceptions import BadRequest
 from werkzeug.serving import run_simple
 
 import db
 from db import get_db
-from models import validate_item, item_to_dict, VALID_STATUSES
+from models import validate_item, item_to_dict
 from auth import auth_required, register_group_and_admin, register_member_via_code, login_user
 from ai_engine import estimate_item_price
 
-# JSON Logging Configuration
+# Load environment variables from .env file
+load_dotenv()
+
+# --- Configuration & Logging ---
+
 def setup_logging() -> logging.Logger:
+    """Configures JSON logging for the application."""
     handler = logging.StreamHandler(sys.stdout)
     formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
     handler.setFormatter(formatter)
@@ -33,18 +35,27 @@ def setup_logging() -> logging.Logger:
 
 logger = setup_logging()
 
-# Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Prometheus metrics
+# --- Metrics ---
+
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 
+# --- Helpers ---
 
+def error_response(message: str, code: int = 400, details: Any = None) -> Tuple[Response, int]:
+    """Standardized error response factory."""
+    response = {'error': message}
+    if details:
+        response['details'] = details
+    return jsonify(response), code
+
+# --- Health Check ---
 
 @app.route('/health')
 def health() -> Tuple[Response, int]:
-    # Metrics port only (8081)
+    """Health check endpoint for Kubernetes/Docker."""
     try:
         if db.db_client:
             db.db_client.admin.command('ping')
@@ -53,48 +64,61 @@ def health() -> Tuple[Response, int]:
         return jsonify({'status': 'unhealthy'}), 503
 
 # --- Auth Routes ---
+
 @app.route('/api/auth/register', methods=['POST'])
-def register():
-    """Start a new Group (Manager)."""
+def register() -> Tuple[Response, int]:
+    """Register a new Group and its Admin (Manager)."""
     data = request.get_json()
-    if not data or not all(k in data for k in ('group_name', 'user_name', 'email', 'password')):
-        return jsonify({'error': 'Missing required fields'}), 400
+    required = ('group_name', 'user_name', 'email', 'password')
     
-    auth_data, errors = register_group_and_admin(data['group_name'], data['user_name'], data['email'], data['password'])
+    if not data or not all(k in data for k in required):
+        return error_response('Missing required fields', 400)
+    
+    auth_data, errors = register_group_and_admin(
+        data['group_name'], data['user_name'], data['email'], data['password']
+    )
+    
     if errors:
-        return jsonify({'error': 'Registration failed', 'details': errors}), 400
+        return error_response('Registration failed', 400, errors)
     
     return jsonify({'message': 'Group created!', 'details': auth_data}), 201
 
 @app.route('/api/auth/join', methods=['POST'])
-def join():
-    """Join an existing Group (Member)."""
+def join() -> Tuple[Response, int]:
+    """Join an existing Group via Join Code."""
     data = request.get_json()
-    if not data or not all(k in data for k in ('join_code', 'user_name', 'email', 'password')):
-        return jsonify({'error': 'Missing required fields'}), 400
+    required = ('join_code', 'user_name', 'email', 'password')
     
-    auth_data, errors = register_member_via_code(data['join_code'], data['user_name'], data['email'], data['password'])
+    if not data or not all(k in data for k in required):
+        return error_response('Missing required fields', 400)
+    
+    auth_data, errors = register_member_via_code(
+        data['join_code'], data['user_name'], data['email'], data['password']
+    )
+    
     if errors:
-        return jsonify({'error': 'Join failed', 'details': errors}), 400
+        return error_response('Join failed', 400, errors)
     
     return jsonify({'message': 'Joined successfully!', 'details': auth_data}), 201
 
 @app.route('/api/auth/login', methods=['POST'])
-def login():
+def login() -> Tuple[Response, int]:
+    """Authenticate user and return JWT."""
     data = request.get_json()
     if not data or not all(k in data for k in ('email', 'password')):
-        return jsonify({'error': 'Missing credentials'}), 400
+        return error_response('Missing credentials', 400)
     
     token, errors = login_user(data['email'], data['password'])
+    
     if errors:
-        return jsonify({'error': 'Authentication failed', 'details': errors}), 401
+        return error_response('Authentication failed', 401, errors)
     
     return jsonify({'token': token}), 200
 
 @app.route('/api/auth/me', methods=['GET'])
 @auth_required
 def get_current_user() -> Tuple[Response, int]:
-    """Return the fresh database state (Role, Name) of the current user."""
+    """Return current user context."""
     return jsonify({
         'user_id': g.user_id,
         'user_name': g.user_name,
@@ -104,44 +128,52 @@ def get_current_user() -> Tuple[Response, int]:
     }), 200
 
 # --- Item Routes ---
+
 @app.route('/api/items', methods=['GET'])
 @auth_required
 def get_items() -> Tuple[Response, int]:
+    """Fetch all items for the user's group."""
     REQUEST_COUNT.labels(method='GET', endpoint='/api/items').inc()
     try:
         database = get_db()
-        items = [item_to_dict(item) for item in database['items'].find({'group_id': g.group_id}).sort('created_at', -1).limit(100)]
-        return jsonify(items), 200
+        items = list(database['items']
+                     .find({'group_id': g.group_id})
+                     .sort('created_at', -1)
+                     .limit(100))
+        return jsonify([item_to_dict(item) for item in items]), 200
     except Exception as e:
-        return jsonify({'error': 'Failed to fetch items'}), 500
+        logger.error(f"Error fetching items: {e}")
+        return error_response('Failed to fetch items', 500)
 
 @app.route('/api/items', methods=['POST'])
 @auth_required
 def create_item() -> Tuple[Response, int]:
+    """Create a new item and trigger AI estimation."""
     try:
         data = request.get_json(silent=True)
-        if not data: return jsonify({'error': 'Invalid JSON'}), 400
+        if not data:
+            return error_response('Invalid JSON', 400)
 
-        # Audit and Multi-tenancy
-        data['submitted_by'] = g.user_id
-        data['submitted_by_name'] = g.user_name  # KEY FIX: Save the actual user name
-        data['group_id'] = g.group_id
-        data['ai_status'] = 'CALCULATING' # Explicitly set for UI
-        
-        # Auto-approve for Managers
-        data['status'] = 'APPROVED' if g.role == 'MANAGER' else 'PENDING'
+        # Enhance data with context
+        data.update({
+            'submitted_by': g.user_id,
+            'submitted_by_name': g.user_name,
+            'group_id': g.group_id,
+            'ai_status': 'CALCULATING',
+            'status': 'APPROVED' if g.role == 'MANAGER' else 'PENDING'
+        })
 
         validated_item, errors = validate_item(data)
         if errors:
-            return jsonify({'error': 'Validation failed', 'details': errors}), 400
+            return error_response('Validation failed', 400, errors)
 
         database = get_db()
         result = database['items'].insert_one(validated_item)
         item_id = result.inserted_id
         validated_item['_id'] = str(item_id)
 
-        # Async AI
-        def run_ai(cid, name, cat):
+        # Background AI Estimation
+        def run_ai_task(cid: Any, name: str, cat: str):
             try:
                 price, status = estimate_item_price(name, cat)
                 database['items'].update_one(
@@ -149,158 +181,181 @@ def create_item() -> Tuple[Response, int]:
                     {'$set': {'price_nis': price, 'ai_status': status}}
                 )
             except Exception as e:
-                logger.error(f"Background update failed for item {cid}: {str(e)}")
+                logger.error(f"AI update failed for item {cid}: {e}")
 
         threading.Thread(
-            target=run_ai,
+            target=run_ai_task,
             args=(item_id, validated_item['name'], validated_item['category']),
             daemon=True
         ).start()
 
         return jsonify(item_to_dict(validated_item)), 201
     except Exception as e:
-        return jsonify({'error': 'Internal error'}), 500
+        logger.error(f"Error creating item: {e}")
+        return error_response('Internal error', 500)
 
 @app.route('/api/items/<item_id>', methods=['PUT'])
 @auth_required
 def update_item(item_id: str) -> Tuple[Response, int]:
+    """Update item status or quantity."""
     try:
-        obj_id = ObjectId(item_id)
-        data = request.get_json()
-        db = get_db()
+        try:
+            obj_id = ObjectId(item_id)
+        except Exception:
+            return error_response('Invalid item ID', 400)
 
-        # Find item first to ensure it belongs to the group
-        item = db['items'].find_one({'_id': obj_id, 'group_id': g.group_id})
+        data = request.get_json()
+        database = get_db()
+
+        # Check existence and ownership (group)
+        item = database['items'].find_one({'_id': obj_id, 'group_id': g.group_id})
         if not item:
-            return jsonify({'error': 'Item not found'}), 404
+            return error_response('Item not found', 404)
 
         update_fields = {}
         
-        # Status update: Managers only
+        # Status Update (Manager Only)
         if 'status' in data:
             if g.role != 'MANAGER':
-                return jsonify({'error': 'Only Managers can approve/reject items'}), 403
+                return error_response('Only Managers can approve/reject items', 403)
             update_fields['status'] = data['status']
 
-        # Quantity update: Everyone
+        # Quantity Update
         if 'quantity' in data:
             try:
                 qty = int(data['quantity'])
                 if qty < 1:
-                    return jsonify({'error': 'Quantity must be at least 1'}), 400
+                    return error_response('Quantity must be at least 1', 400)
                 update_fields['quantity'] = qty
             except (ValueError, TypeError):
-                return jsonify({'error': 'Invalid quantity'}), 400
+                return error_response('Invalid quantity', 400)
 
         if not update_fields:
-            return jsonify({'error': 'No fields to update'}), 400
+            return error_response('No fields to update', 400)
 
-        db['items'].update_one({'_id': obj_id}, {'$set': update_fields})
+        database['items'].update_one({'_id': obj_id}, {'$set': update_fields})
         return jsonify({'message': 'Updated successfully'}), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error updating item {item_id}: {e}")
+        return error_response(str(e), 500)
+
+@app.route('/api/items/<item_id>', methods=['DELETE'])
+@auth_required
+def delete_item(item_id: str) -> Tuple[Response, int]:
+    """Delete an item (Manager or Owner)."""
+    try:
+        try:
+            obj_id = ObjectId(item_id)
+        except Exception:
+            return error_response('Invalid item ID', 400)
+
+        database = get_db()
+        item = database['items'].find_one({'_id': obj_id, 'group_id': g.group_id})
+        
+        if not item:
+            return error_response('Item not found', 404)
+
+        is_owner = str(item.get('submitted_by')) == g.user_id
+        if g.role != 'MANAGER' and not is_owner:
+            return error_response('You can only delete your own items', 403)
+
+        result = database['items'].delete_one({'_id': obj_id, 'group_id': g.group_id})
+        if result.deleted_count == 0:
+            return error_response('Item not found or already deleted', 404)
+            
+        return Response(status=204)
+    except Exception as e:
+        logger.error(f"Error deleting item {item_id}: {e}")
+        return error_response('Internal error', 500)
+
+@app.route('/api/items/clear', methods=['DELETE'])
+@auth_required
+def delete_all_items() -> Tuple[Response, int]:
+    """Delete all items in the group (Manager only)."""
+    try:
+        if g.role != 'MANAGER':
+            return error_response('Only Managers can clear the list', 403)
+
+        database = get_db()
+        database['items'].delete_many({'group_id': g.group_id})
+        return Response(status=204)
+    except Exception as e:
+        logger.error(f"Error clearing items: {e}")
+        return error_response(str(e), 500)
+
+# --- Group Member Routes ---
 
 @app.route('/api/groups/members', methods=['GET'])
 @auth_required
-def get_group_members() -> Any:
+def get_group_members() -> Tuple[Response, int]:
+    """List all members of the group (Manager only)."""
     try:
         if g.role != 'MANAGER':
-            return jsonify({'error': 'Only Managers can view group members'}), 403
+            return error_response('Only Managers can view group members', 403)
             
-        db = get_db()
-        # Find all users in the same group
-        users = list(db['users'].find({'group_id': g.group_id}))
+        database = get_db()
+        users = list(database['users'].find({'group_id': g.group_id}))
         
-        member_list = []
-        for user in users:
-            member_list.append({
-                'id': str(user['_id']),
-                'user_name': user.get('full_name', 'Anonymous'),
-                'email': user['email'],
-                'role': user['role']
-            })
+        member_list = [{
+            'id': str(user['_id']),
+            'user_name': user.get('full_name', 'Anonymous'),
+            'email': user['email'],
+            'role': user['role']
+        } for user in users]
             
         return jsonify(member_list), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error getting members: {e}")
+        return error_response(str(e), 500)
 
 @app.route('/api/groups/members/<user_id>', methods=['PUT', 'DELETE'])
 @auth_required
-def manage_group_member(user_id: str) -> Any:
+def manage_group_member(user_id: str) -> Tuple[Response, int]:
+    """Promote, demote, or remove a member (Manager only)."""
     try:
         if g.role != 'MANAGER':
-            return jsonify({'error': 'Only Managers can manage group members'}), 403
+            return error_response('Only Managers can manage group members', 403)
             
-        db = get_db()
-        target_user = db['users'].find_one({'_id': ObjectId(user_id), 'group_id': g.group_id})
+        try:
+            target_obj_id = ObjectId(user_id)
+        except Exception:
+            return error_response('Invalid user ID', 400)
+
+        database = get_db()
+        target_user = database['users'].find_one({'_id': target_obj_id, 'group_id': g.group_id})
         
         if not target_user:
-            return jsonify({'error': 'User not found in your group'}), 404
+            return error_response('User not found in your group', 404)
             
-        # Cannot manage yourself
         if str(target_user['_id']) == g.user_id:
-            return jsonify({'error': 'You cannot promote or remove yourself'}), 400
+            return error_response('You cannot promote or remove yourself', 400)
 
         if request.method == 'DELETE':
-            db['users'].delete_one({'_id': ObjectId(user_id)})
-            return ('', 204)
+            database['users'].delete_one({'_id': target_obj_id})
+            return Response(status=204)
         
         elif request.method == 'PUT':
             data = request.get_json()
             new_role = data.get('role')
             if new_role not in ['MANAGER', 'MEMBER']:
-                return jsonify({'error': 'Valid role (MANAGER or MEMBER) is required'}), 400
+                return error_response('Valid role (MANAGER or MEMBER) is required', 400)
             
-            db['users'].update_one({'_id': ObjectId(user_id)}, {'$set': {'role': new_role}})
+            database['users'].update_one({'_id': target_obj_id}, {'$set': {'role': new_role}})
             return jsonify({'message': f'User role updated to {new_role}'}), 200
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error managing member {user_id}: {e}")
+        return error_response(str(e), 500)
 
-@app.route('/api/items/clear', methods=['DELETE'])
-@auth_required
-def delete_all_items() -> Any:
-    try:
-        if g.role != 'MANAGER':
-            return jsonify({'error': 'Only Managers can clear the list'}), 403
+# --- Server Start ---
 
-        db = get_db()
-        result = db['items'].delete_many({'group_id': g.group_id})
-        return ('', 204)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/items/<item_id>', methods=['DELETE'])
-@auth_required
-def delete_item(item_id: str) -> Any:
-    try:
-        db = get_db()
-        # Find item to check ownership
-        item = db['items'].find_one({'_id': ObjectId(item_id), 'group_id': g.group_id})
-        if not item:
-            return jsonify({'error': 'Item not found'}), 404
-
-        # Permission Check: Manager OR Owner
-        is_owner = str(item.get('submitted_by')) == g.user_id
-        if g.role != 'MANAGER' and not is_owner:
-            return jsonify({'error': 'You can only delete your own items'}), 403
-
-        # Single delete operation with correct criteria
-        result = db['items'].delete_one({'_id': ObjectId(item_id), 'group_id': g.group_id})
-        
-        # If deleted count is 0, it means item wasn't found or already deleted
-        if result.deleted_count == 0:
-            return jsonify({'error': 'Item not found or already deleted'}), 404
-            
-        return ('', 204)
-    except Exception:
-        return jsonify({'error': 'Internal error'}), 500
-
-def run_metrics_server():
+def run_metrics_server() -> None:
+    """Runs Prometheus metrics server on a separate port."""
     port = int(os.environ.get('METRICS_PORT', 8081))
     run_simple('0.0.0.0', port, make_wsgi_app(), threaded=True)
 
-
 if __name__ == '__main__':
+    # Start metrics server in background thread
     threading.Thread(target=run_metrics_server, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
+

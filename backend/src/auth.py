@@ -1,17 +1,25 @@
 import os
 import datetime
+from typing import Optional, Dict, Any, Tuple, List
+from functools import wraps
+
 import jwt
 import bcrypt
-from typing import Optional, Dict, Any, Tuple, List
-from pymongo.collection import Collection
 from flask import request, jsonify, g
-from functools import wraps
+from bson import ObjectId
 
 from db import get_db
 from models import validate_user, validate_group
 
-SECRET_KEY = os.environ.get('JWT_SECRET', 'dev-secret-change-me')
+SECRET_KEY = os.environ.get('JWT_SECRET')
+if not SECRET_KEY:
+    # In production, this should likely raise an error. 
+    # For now, we'll log a warning or raise to enforce best practices as requested.
+    raise ValueError("JWT_SECRET environment variable is not set")
 ALGORITHM = 'HS256'
+TOKEN_EXPIRATION_DAYS = 30
+
+# --- Password Utilities ---
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
@@ -22,7 +30,9 @@ def verify_password(password: str, hashed: str) -> bool:
     """Verify a password against a hash."""
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def generate_token(user_id: str, group_id: str, role: str, user_name: str, group_name: str, join_code: str = None) -> str:
+# --- JWT Utilities ---
+
+def generate_token(user_id: str, group_id: str, role: str, user_name: str, group_name: str, join_code: Optional[str] = None) -> str:
     """Generate a JWT token enriched with names and Join Code."""
     payload = {
         'user_id': user_id,
@@ -31,7 +41,7 @@ def generate_token(user_id: str, group_id: str, role: str, user_name: str, group
         'user_name': user_name,
         'group_name': group_name,
         'join_code': join_code,
-        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
+        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=TOKEN_EXPIRATION_DAYS)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -42,7 +52,10 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
 
+# --- Decorators ---
+
 def auth_required(f):
+    """Decorator to protect routes with JWT authentication."""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
@@ -58,39 +71,38 @@ def auth_required(f):
         if not data:
             return jsonify({'error': 'Unauthorized', 'details': 'Token is invalid or expired'}), 401
         
-        # Inject auth data into Flask's 'g' object
+        # Inject auth data directly into Flask's 'g' object
         g.user_id = data['user_id']
         g.group_id = data['group_id']
+        g.group_name = data.get('group_name', 'Group')
+        g.join_code = data.get('join_code')
         
-        # KEY FIX: Fetch fresh role from DB to support immediate promotion/demotion
-        from flask import current_app
-        from bson.objectid import ObjectId
-        
+        # Check DB for fresh role/status (Immediate promotion/demotion)
         try:
             db = get_db()
             user = db['users'].find_one({'_id': ObjectId(data['user_id'])})
             if user:
-                g.role = user.get('role', data['role']) # Use fresh role or fallback to token
-                g.user_name = user.get('full_name', data.get('user_name', 'Anonymous')) # Fresh name too
+                g.role = user.get('role', data['role'])
+                g.user_name = user.get('full_name', data.get('user_name', 'Anonymous'))
             else:
                 g.role = data['role']
                 g.user_name = data.get('user_name', 'Anonymous')
         except Exception:
-            # Fallback to token data if DB fails
+            # Fallback to token if DB unavailable
             g.role = data['role']
             g.user_name = data.get('user_name', 'Anonymous')
 
-        g.group_name = data.get('group_name', 'Group')
-        g.join_code = data.get('join_code')
-        
         return f(*args, **kwargs)
     return decorated
+
+# --- Logic ---
 
 def register_group_and_admin(group_name: str, user_name: str, email: str, password: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
     """Register a new group and its first admin (Manager)."""
     db = get_db()
+    email_clean = email.lower().strip()
     
-    if db['users'].find_one({'email': email.lower().strip()}):
+    if db['users'].find_one({'email': email_clean}):
         return None, ['User with this email already exists']
     
     # 1. Create Group
@@ -104,7 +116,7 @@ def register_group_and_admin(group_name: str, user_name: str, email: str, passwo
     
     # 2. Create Admin User
     user_data, user_errors = validate_user({
-        'email': email,
+        'email': email_clean,
         'password_hash': hash_password(password),
         'group_id': group_id,
         'role': 'MANAGER',
@@ -112,6 +124,7 @@ def register_group_and_admin(group_name: str, user_name: str, email: str, passwo
     })
     
     if user_errors:
+        # Rollback group creation if user fails
         db['groups'].delete_one({'_id': group_result.inserted_id})
         return None, user_errors
     
@@ -127,18 +140,19 @@ def register_group_and_admin(group_name: str, user_name: str, email: str, passwo
 def register_member_via_code(join_code: str, user_name: str, email: str, password: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
     """Register a member to an existing group using its join code."""
     db = get_db()
+    email_clean = email.lower().strip()
     
     # Find group by code
     group = db['groups'].find_one({'join_code': join_code.upper().strip()})
     if not group:
         return None, ['Invalid Join Code']
         
-    if db['users'].find_one({'email': email.lower().strip()}):
+    if db['users'].find_one({'email': email_clean}):
         return None, ['User with this email already exists']
         
     # Create Member User
     user_data, user_errors = validate_user({
-        'email': email,
+        'email': email_clean,
         'password_hash': hash_password(password),
         'group_id': str(group['_id']),
         'role': 'MEMBER',
@@ -166,7 +180,6 @@ def login_user(email: str, password: str) -> Tuple[Optional[str], List[str]]:
         return None, ['Invalid email or password']
     
     # Fetch group name for the tokens
-    from bson import ObjectId
     group = db['groups'].find_one({'_id': ObjectId(user['group_id'])})
     group_name = group['name'] if group else 'SmartCart Group'
     
