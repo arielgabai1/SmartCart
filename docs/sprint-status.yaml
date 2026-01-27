@@ -111,6 +111,7 @@ epics:
       - id: "9.2"
         title: "Startup Guide"
         done: false
+        status: "review"
 
 blockers: []
 risks:
