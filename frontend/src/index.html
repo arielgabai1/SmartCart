@@ -8,7 +8,7 @@
     <title>SmartCart | AI-Powered Shopping List</title>
     <meta name="description"
         content="Collaborative shopping list management with AI-powered pricing for Israeli markets.">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
@@ -22,7 +22,7 @@
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
             <h2>Group Menu</h2>
-            <button id="sidebar-close" class="sidebar-close">&times;</button>
+            <button id="sidebar-close" class="sidebar-close" aria-label="Close menu">&times;</button>
         </div>
 
         <div class="sidebar-content">
@@ -60,7 +60,7 @@
             <!-- Header -->
             <header class="app-header">
                 <div class="header-left">
-                    <button id="menu-toggle" class="menu-toggle">
+                    <button id="menu-toggle" class="menu-toggle" aria-label="Toggle menu">
                         <span></span>
                         <span></span>
                         <span></span>
@@ -71,7 +71,7 @@
                     </div>
                 </div>
                 <div class="header-right">
-                    <button id="theme-toggle" class="theme-toggle" title="Toggle theme">
+                    <button id="theme-toggle" class="theme-toggle" title="Toggle theme" aria-label="Toggle theme">
                         <span id="theme-icon"></span>
                     </button>
                     <div class="user-badge">
@@ -87,21 +87,21 @@
             <!-- Stats Bar -->
             <div class="stats-bar">
                 <div class="stat-card">
-                    <div class="stat-icon total">&#8362;</div>
+                    <div class="stat-icon total">₪</div>
                     <div class="stat-content">
                         <div class="stat-value" id="cart-total">0.00</div>
                         <div class="stat-label">Estimated Total</div>
                     </div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon approved">&#10003;</div>
+                    <div class="stat-icon approved">✓</div>
                     <div class="stat-content">
                         <div class="stat-value" id="approved-count">0</div>
                         <div class="stat-label">Approved Items</div>
                     </div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon pending">&#9679;</div>
+                    <div class="stat-icon pending">•</div>
                     <div class="stat-content">
                         <div class="stat-value" id="pending-count">0</div>
                         <div class="stat-label">Pending Review</div>
@@ -137,7 +137,13 @@
                         <div class="card-body">
                             <div id="items-container" class="item-list">
                                 <div class="empty-state">
-                                    <div class="empty-state-icon">&#128722;</div>
+                                    <div class="empty-state-icon">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="9" cy="21" r="1"></circle>
+                                            <circle cx="20" cy="21" r="1"></circle>
+                                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                                        </svg>
+                                    </div>
                                     <p class="empty-state-text">No items yet. Add your first item!</p>
                                 </div>
                             </div>
@@ -167,7 +173,7 @@
                             <form id="item-form">
                                 <div class="form-group">
                                     <label class="form-label" for="name">Item Name</label>
-                                    <input type="text" id="name" class="form-input" placeholder="e.g. Milk 3%" required>
+                                    <input type="text" id="name" class="form-input" required>
                                 </div>
                                 <div class="form-row">
                                     <div class="form-group">
