@@ -38,7 +38,7 @@ def estimate_item_price(item_name: str, category: str) -> tuple[float, str]:
             return 0.0, 'ERROR'
 
         prompt = (
-            f"Estimate the average price in New Israeli Shekels (NIS) for the item: '{item_name}' "
+            f"Estimate the current average price in New Israeli Shekels (NIS) for the item: '{item_name}' "
             f"in the category '{category}' in Israel. "
             "Return ONLY the numeric value (as a float). No text, no currency symbols."
         )
