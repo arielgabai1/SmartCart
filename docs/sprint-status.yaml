@@ -92,7 +92,7 @@ epics:
 
   - id: 8
     title: "Testing & Quality"
-    status: "NOT_STARTED"
+    status: "IN_PROGRESS"
     stories:
       - id: "8.1"
         title: "API Integration Tests"
