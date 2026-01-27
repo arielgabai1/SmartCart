@@ -147,7 +147,7 @@ function initUI() {
     const isManager = STATE.user.role === 'MANAGER';
 
     setDisplay('clear-all-btn', isManager ? 'flex' : 'none');
-    setDisplay('members-section', isManager ? 'block' : 'none');
+    setDisplay('members-section', 'block'); // Visible for all roles
 
     setText('form-title', isManager ? 'Add New Item' : 'Request Item');
     setText('submit-btn', isManager ? 'Add Item' : 'Submit Request');
@@ -176,12 +176,51 @@ function setupEventListeners() {
     document.getElementById('sidebar-close')?.addEventListener('click', () => toggleSidebar(false));
     overlay?.addEventListener('click', () => toggleSidebar(false));
 
-    // Clipboard
-    document.getElementById('copy-code-card')?.addEventListener('click', () => {
+    // Clipboard with inline feedback (Unified)
+    document.getElementById('copy-btn')?.addEventListener('click', async (e) => {
+        // Handle child clicks
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
         const code = STATE.user.join_code;
-        if (code) {
-            navigator.clipboard.writeText(code);
-            alert(`Invite code "${code}" copied!`);
+        if (!code) return;
+
+        // Robust Copy Function
+        const copyText = async (text) => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                }
+            } catch (err) { }
+
+            // Fallback
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return successful;
+            } catch (err) { return false; }
+        };
+
+        const success = await copyText(code);
+        if (success) {
+            // Visual Feedback: Checkmark Animation
+            const originalText = btn.innerHTML; // Use innerHTML to preserve potential icons
+            btn.innerHTML = '&#10003;'; // Checkmark symbol
+            btn.classList.add('copied');
+
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.classList.remove('copied');
+            }, 3000); // 3 Seconds
+        } else {
+            showToast(`Code: ${code}`, 'info'); // Ultimate fallback
         }
     });
 
@@ -225,9 +264,9 @@ async function fetchItems() {
     }
 }
 
-/** Fetch and refresh members (Managers only) */
+/** Fetch and refresh members (All roles) */
 async function fetchMembers(forceRefresh = false) {
-    if (STATE.user.role !== 'MANAGER') return;
+    // if (STATE.user.role !== 'MANAGER') return; // Allow all to see members
 
     try {
         const url = `${CONFIG.API_BASE}/groups/members${forceRefresh ? '?t=' + Date.now() : ''}`;
@@ -480,6 +519,10 @@ function renderItemCard(item, isPending, isMyItem) {
     const showStatus = isMyItem || !isPending;
     const submitter = escapeHtml(item.submitted_by_name || 'Member');
 
+    // Rejection details
+    const isRejected = item.status === 'REJECTED';
+    const rejectedBy = item.rejected_by_name ? ` by ${escapeHtml(item.rejected_by_name)}` : '';
+
     // Manager Actions
     const managerActions = STATE.user.role === 'MANAGER' ? `
         ${isPending ? `
@@ -501,15 +544,17 @@ function renderItemCard(item, isPending, isMyItem) {
                     <div class="item-title">${escapeHtml(item.name)}</div>
                     <div class="item-submitter">by ${submitter}</div>
                 </div>
-                ${showStatus ? `<span class="status-pill status-${item.status}">${item.status}</span>` : ''}
+                ${showStatus ? `<span class="status-pill status-${item.status}">${item.status}${isRejected ? rejectedBy : ''}</span>` : ''}
             </div>
             <div class="item-footer">
                 <div class="item-meta">
                     <span class="meta-tag">${item.category || 'OTHER'}</span>
                     <div class="quantity-control">
-                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, -1)">-</button>
+                        ${(STATE.user.role === 'MANAGER' || (isPending && isMyItem)) ?
+            `<button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, -1)">-</button>` : ''}
                         <span class="quantity-value">${item.quantity}</span>
-                        <button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, 1)">+</button>
+                        ${(STATE.user.role === 'MANAGER' || (isPending && isMyItem)) ?
+            `<button class="quantity-btn" onclick="updateQuantity('${item._id}', ${item.quantity}, 1)">+</button>` : ''}
                     </div>
                     ${isCalc ? '<span class="text-muted">Calculating...</span>' :
             isError ? '<span class="price-error">Price unavailable</span>' :
@@ -531,8 +576,24 @@ function renderMembers() {
     }
 
     container.innerHTML = STATE.members.map(m => {
-        const isMe = m.id === STATE.user.user_id;
+        // Strict ID comparison fix - ensure both are strings
+        const isMe = String(m.id) === String(STATE.user.user_id);
         const isMgr = m.role === 'MANAGER';
+        const amIManager = STATE.user.role === 'MANAGER';
+
+        let actionHtml = '';
+        if (isMe) {
+            actionHtml = '<span class="text-muted text-sm">You</span>';
+        } else if (amIManager) {
+            actionHtml = `
+                <div class="member-actions">
+                    <button class="btn btn-sm btn-ghost" onclick="${isMgr ? 'demoteMember' : 'promoteMember'}('${m.id}')">
+                        ${isMgr ? 'Demote' : 'Promote'}
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
+                </div>
+            `;
+        }
 
         return `
             <div class="member-card">
@@ -540,14 +601,7 @@ function renderMembers() {
                     <div class="member-name">${escapeHtml(m.user_name)}</div>
                     <div class="member-meta">${escapeHtml(m.email)} | ${m.role}</div>
                 </div>
-                ${!isMe ? `
-                    <div class="member-actions">
-                        <button class="btn btn-sm btn-ghost" onclick="${isMgr ? 'demoteMember' : 'promoteMember'}('${m.id}')">
-                            ${isMgr ? 'Demote' : 'Promote'}
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="removeMember('${m.id}')">Remove</button>
-                    </div>
-                ` : '<span class="text-muted text-sm">You</span>'}
+                ${actionHtml}
             </div>
         `;
     }).join('');
@@ -571,6 +625,39 @@ function updateStats() {
 }
 
 // --- Utils ---
+
+// --- Utils ---
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+
+    let icon = 'ℹ️';
+    if (type === 'success') icon = '✅';
+    if (type === 'error') icon = '❌';
+
+    toast.innerHTML = `<span class="toast-icon">${icon}</span> ${escapeHtml(message)}`;
+    container.appendChild(toast);
+
+    // Auto remove
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, 3000);
+}
+
+// Global Quantity Adjuster for Form
+window.adjustFormQty = (delta) => {
+    const input = document.getElementById('quantity');
+    if (!input) return;
+    let val = parseInt(input.value) || 1;
+    val += delta;
+    if (val < 1) val = 1;
+    input.value = val;
+};
 
 function escapeHtml(text) {
     if (!text) return '';

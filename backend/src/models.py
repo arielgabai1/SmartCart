@@ -187,6 +187,10 @@ def item_to_dict(item: Dict[str, Any]) -> Dict[str, Any]:
     # Priority: 1. Human Name, 2. Submission Label, 3. 'Group Member'
     item['submitted_by_name'] = item.get('submitted_by_name') or item.get('submitted_by') or 'Group Member'
     
+    # Expose rejection info
+    if 'rejected_by_name' not in item:
+        item['rejected_by_name'] = None
+    
     # Ensure defaults for UI
     item.setdefault('ai_status', None)
     item.setdefault('ai_latency', None)

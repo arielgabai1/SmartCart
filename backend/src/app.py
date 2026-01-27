@@ -218,11 +218,27 @@ def update_item(item_id: str) -> Tuple[Response, int]:
         if 'status' in data:
             if g.role != 'MANAGER':
                 return error_response('Only Managers can approve/reject items', 403)
-            update_fields['status'] = data['status']
+            
+            new_status = data['status']
+            update_fields['status'] = new_status
+            
+            # Track rejection author
+            if new_status == 'REJECTED':
+                update_fields['rejected_by'] = g.user_id
+                update_fields['rejected_by_name'] = g.user_name
 
         # Quantity Update
         if 'quantity' in data:
             try:
+                # Permission check: Members can only edit their own PENDING items
+                # Managers can edit any item
+                if g.role != 'MANAGER':
+                    is_owner = str(item.get('submitted_by')) == g.user_id
+                    is_pending = item.get('status') == 'PENDING'
+                    
+                    if not (is_owner and is_pending):
+                         return error_response('You can only update quantity on your own pending items', 403)
+
                 qty = int(data['quantity'])
                 if qty < 1:
                     return error_response('Quantity must be at least 1', 400)
@@ -288,10 +304,9 @@ def delete_all_items() -> Tuple[Response, int]:
 @app.route('/api/groups/members', methods=['GET'])
 @auth_required
 def get_group_members() -> Tuple[Response, int]:
-    """List all members of the group (Manager only)."""
+    """List all members of the group (Accessible to all members)."""
     try:
-        if g.role != 'MANAGER':
-            return error_response('Only Managers can view group members', 403)
+        # Removed Manager-only check to allow member visibility
             
         database = get_db()
         users = list(database['users'].find({'group_id': g.group_id}))

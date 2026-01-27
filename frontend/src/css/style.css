@@ -253,6 +253,33 @@ body {
     margin-left: 0.5rem;
 }
 
+.sidebar-invite-btn {
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 0.35rem 0.85rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    font-weight: 500;
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-invite-btn:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.sidebar-invite-btn.copied {
+    background: #10b981 !important;
+    border-color: #10b981 !important;
+    color: white !important;
+    transform: scale(1.05);
+}
+
 .sidebar-overlay {
     position: fixed;
     inset: 0;
@@ -615,6 +642,12 @@ body {
     color: var(--text-primary);
 }
 
+.quantity-btn:disabled {
+    pointer-events: none;
+    opacity: 0.3;
+    cursor: default;
+}
+
 .quantity-value {
     min-width: 32px;
     text-align: center;
@@ -849,6 +882,7 @@ select:focus-visible {
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -882,11 +916,11 @@ select:focus-visible {
         display: block;
     }
 
-    .content-grid > section {
+    .content-grid>section {
         margin-bottom: 1.5rem;
     }
 
-    .content-grid > section:last-child {
+    .content-grid>section:last-child {
         margin-bottom: 0;
     }
 
@@ -1098,4 +1132,118 @@ html {
         width: 36px;
         height: 36px;
     }
+}
+
+/* ========== TOAST NOTIFICATIONS ========== */
+.toast-container {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    z-index: 2000;
+    pointer-events: none;
+    width: 90%;
+    max-width: 400px;
+}
+
+.toast {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    box-shadow: var(--shadow-medium);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    pointer-events: auto;
+}
+
+.toast.hiding {
+    animation: toast-out 0.2s ease-in forwards;
+}
+
+.toast-icon {
+    font-size: 1.2rem;
+}
+
+@keyframes toast-in {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes toast-out {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+}
+
+/* ========== FORM QUANTITY CONTROL ========== */
+.quantity-input-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-base);
+}
+
+.qty-btn-form {
+    width: 40px;
+    height: 44px;
+    /* Matches standard input height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all var(--transition-fast);
+}
+
+.qty-btn-form:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.qty-btn-form:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.qty-input-field {
+    flex: 1;
+    text-align: center;
+    border: none;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    height: 44px;
+    padding: 0;
+    -moz-appearance: textfield;
+}
+
+.qty-input-field::-webkit-outer-spin-button,
+.qty-input-field::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
