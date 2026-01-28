@@ -51,9 +51,11 @@ pipeline {
                     echo "=== Container Status ==="
                     docker compose ps -a
 
-                    echo "=== Backend Logs ==="
-                    docker compose logs backend --tail=30
+                    sleep 10
 
+                    echo "=== Backend Logs ==="
+                    docker compose logs backend --tail=50
+                    
                     echo "=== Testing Health Endpoint ==="
                     curl -v http://localhost/api/health || true
                 '''
