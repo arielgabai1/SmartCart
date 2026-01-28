@@ -40,6 +40,7 @@ pipeline {
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
+                sh 'docker compose down -v --remove-orphans || true'
                 sh 'docker compose up -d --build'
 
                 timeout(time: 2, unit: 'MINUTES') {
