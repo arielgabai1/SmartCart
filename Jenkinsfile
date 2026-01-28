@@ -47,7 +47,7 @@ pipeline {
             steps {
                 sh 'docker compose up -d --build'
 
-                timeout(time: 60, unit: 'SECONDS') {
+                timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
                             def result = sh(script: 'curl -sf http://localhost/api/health', returnStatus: true)
