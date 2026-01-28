@@ -22,8 +22,8 @@ pipeline {
         stage('Unit Test') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                // Run unit tests in isolated container
-                sh 'docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from smartcart_test'
+                // Run unit and integration tests with mocked DB
+                sh 'docker compose -f docker-compose.test.yml run --rm smartcart_test pytest tests/unit_test.py tests/integration_test.py -v'
             }
             post {
                 always {
