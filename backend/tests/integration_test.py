@@ -2,7 +2,7 @@ import pytest
 import requests
 import time
 
-BASE_URL = 'http://localhost'
+BASE_URL = 'http://frontend'
 
 # --- System Health Tests ---
 

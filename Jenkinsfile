@@ -47,35 +47,10 @@ pipeline {
             steps {
                 sh 'docker compose up -d --build'
 
-                sh '''
-                    echo "=== Container Status (initial) ==="
-                    docker compose ps -a
-
-                    sleep 40
-
-                    echo "=== Container Status (after sleep) ==="
-                    docker compose ps -a
-
-                    echo "=== Backend Logs ==="
-                    docker compose logs backend --tail=50
-
-                    echo "=== Frontend/Nginx Logs ==="
-                    docker compose logs frontend --tail=50
-
-                    echo "=== Check Nginx Process ==="
-                    docker compose exec -T frontend ps aux || true
-
-                    echo "=== Test Nginx Config ==="
-                    docker compose exec -T frontend nginx -t || true
-
-                    echo "=== Testing Health Endpoint ==="
-                    curl -v http://localhost/api/health || true
-                '''
-
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            def result = sh(script: 'curl -sf http://localhost/api/health', returnStatus: true)
+                            def result = sh(script: 'docker compose exec -T backend curl -sf http://frontend/api/health', returnStatus: true)
                             if (result != 0) {
                                 echo "Health check failed, retrying..."
                             }
