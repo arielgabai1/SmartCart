@@ -4,7 +4,6 @@ pipeline {
     environment {
         ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
         GITLAB_REPO = 'https://gitlab.com/arielgabai/smartcart.git'
-        AWS_REGION = 'ap-south-1'
         BACKEND_IMAGE = "${ECR_URL}-backend"
         FRONTEND_IMAGE = "${ECR_URL}-frontend"
         IMAGE_TAG = "v1.0.${BUILD_NUMBER}"
@@ -49,13 +48,7 @@ pipeline {
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
-                        script {
-                            def result = sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://frontend/api/health\', timeout=5)"', returnStatus: true)
-                            if (result != 0) {
-                                echo "Health check failed, retrying..."
-                            }
-                            return result == 0
-                        }
+                        sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://frontend/api/health\', timeout=5)"', returnStatus: true) == 0
                     }
                 }
 
