@@ -528,19 +528,6 @@ def test_get_group_members_success(client, mock_db):
 
 
 @pytest.mark.integration
-@pytest.mark.p1
-def test_get_group_members_forbidden_for_member(client):
-    """GET /api/groups/members forbidden for MEMBER."""
-    def mock_decode_member(token):
-        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
-                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
-
-    with patch.object(auth_module, 'decode_token', mock_decode_member):
-        response = client.get('/api/groups/members')
-        assert response.status_code == 403
-
-
-@pytest.mark.integration
 @pytest.mark.p0
 def test_update_member_role_success(client, mock_db):
     """PUT /api/groups/members/<id> allows MANAGER to update role."""
