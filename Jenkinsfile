@@ -72,6 +72,10 @@ pipeline {
                 sh "docker push ${ECR_URL}:latest"
             }
         }
+
+        stage('Deploy to GitOps') {
+            when { branch 'main' }
+            // Implement deployment steps here, updating manifests, triggering ArgoCD sync.
     }
 
     post {
