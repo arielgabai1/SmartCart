@@ -1,9 +1,13 @@
 services:
   frontend:
-    build: ./frontend
+    image: nginx:1.29-alpine
     container_name: nginx
     ports:
       - "80:80"
+    volumes:
+      - ./conf.d/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/usr/share/nginx/html:ro
     depends_on:
       - backend
     restart: on-failure

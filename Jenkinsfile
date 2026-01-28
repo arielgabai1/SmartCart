@@ -4,8 +4,7 @@ pipeline {
     environment {
         ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
         GITLAB_REPO = 'https://gitlab.com/arielgabai/smartcart.git'
-        BACKEND_IMAGE = "${ECR_URL}-backend"
-        FRONTEND_IMAGE = "${ECR_URL}-frontend"
+        DOCKER_IMAGE = "${ECR_URL}-backend"
         IMAGE_TAG = "v1.0.${BUILD_NUMBER}"
     }
 
@@ -34,10 +33,7 @@ pipeline {
         stage('Package') { // Build production Docker images
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh '''
-                    docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest ./backend
-                    docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} -t ${FRONTEND_IMAGE}:latest ./frontend
-                '''
+                sh 'docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} -t ${DOCKER_IMAGE}:latest ./backend'
             }
         }
 
@@ -48,7 +44,7 @@ pipeline {
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
-                        sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://frontend/api/health\', timeout=5)"', returnStatus: true) == 0
+                        sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://localhost:5000/api/health\', timeout=5)"', returnStatus: true) == 0
                     }
                 }
 

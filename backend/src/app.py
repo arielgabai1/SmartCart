@@ -116,7 +116,7 @@ def error_response(message: str, code: int = 400, details: Any = None) -> Tuple[
 
 # --- Health Check ---
 
-@app.route('/health')
+@app.route('/api/health')
 def health() -> Tuple[Response, int]:
     """Health check endpoint for Kubernetes/Docker."""
     try:
