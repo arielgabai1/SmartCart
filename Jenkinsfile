@@ -48,10 +48,13 @@ pipeline {
                 sh 'docker compose up -d --build'
 
                 sh '''
-                    echo "=== Container Status ==="
+                    echo "=== Container Status (initial) ==="
                     docker compose ps -a
 
                     sleep 40
+
+                    echo "=== Container Status (after sleep) ==="
+                    docker compose ps -a
 
                     echo "=== Backend Logs ==="
                     docker compose logs backend --tail=50
