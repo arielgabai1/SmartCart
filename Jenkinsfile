@@ -44,7 +44,10 @@ pipeline {
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
-                        sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://localhost:5000/api/health\', timeout=5)"', returnStatus: true) == 0
+                        script {
+                            def exitCode = sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://localhost:5000/api/health\', timeout=5)"', returnStatus: true)
+                            return exitCode == 0
+                        }
                     }
                 }
 
