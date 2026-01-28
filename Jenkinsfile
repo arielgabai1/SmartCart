@@ -43,7 +43,7 @@ pipeline {
                 sh 'docker compose down -v --remove-orphans || true'
                 // Fix if Docker created conf.d/nginx.conf as a directory
                 sh 'rm -rf conf.d && git checkout conf.d'
-                sh 'docker compose up -d --build'
+                sh 'export PWD=$(pwd) && docker compose up -d --build'
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
