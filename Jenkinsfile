@@ -36,8 +36,8 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 sh '''
-                    docker build -f deploy/backend/Dockerfile.k8s -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest .
-                    docker build -f deploy/frontend/Dockerfile.k8s -t ${FRONTEND_IMAGE}:${IMAGE_TAG} -t ${FRONTEND_IMAGE}:latest .
+                    docker build -f backend/Dockerfile -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest .
+                    docker build -f frontend/Dockerfile -t ${FRONTEND_IMAGE}:${IMAGE_TAG} -t ${FRONTEND_IMAGE}:latest .
                 '''
             }
         }
