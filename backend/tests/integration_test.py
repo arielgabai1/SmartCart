@@ -1,566 +1,739 @@
-import pytest
-import requests
-import time
+"""
+Integration tests - API endpoints with mocked database.
+Covers all API routes, authentication, authorization, and multi-tenancy.
+"""
+import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-BASE_URL = os.getenv('TEST_BASE_URL', 'http://frontend')
-
-# --- System Health Tests ---
-
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_health_endpoint_accessible():
-    """Health endpoint accessible via metrics port."""
-    try:
-        response = requests.get(f'{BASE_URL}/api/health', timeout=5)
-        assert response.status_code in [200, 503]
-        data = response.json()
-        assert 'status' in data
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+import pytest
+from bson import ObjectId
+from unittest.mock import patch
+import auth as auth_module
 
 
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_frontend_serves_static_files():
-    """Frontend serves index.html via Nginx."""
-    try:
-        response = requests.get(BASE_URL, timeout=5)
+# --- Items API Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_get_items_returns_200(client):
+    """GET /api/items returns 200 with empty list initially."""
+    response = client.get('/api/items')
+    assert response.status_code == 200
+    assert isinstance(response.get_json(), list)
+    assert len(response.get_json()) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_post_item_success_manager(client):
+    """POST /api/items creates item with APPROVED status for MANAGER."""
+    response = client.post('/api/items', json={'name': 'Milk', 'category': 'Dairy'})
+    assert response.status_code == 201
+    data = response.get_json()
+    assert '_id' in data
+    assert data['name'] == 'Milk'
+    assert data['status'] == 'APPROVED'  # Auto-approved for MANAGER
+    assert data['ai_status'] == 'CALCULATING'
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_post_item_success_member(client, mock_db):
+    """POST /api/items creates item with PENDING status for MEMBER."""
+    # Override mock to return MEMBER role
+
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        response = client.post('/api/items', json={'name': 'Bread'})
+        assert response.status_code == 201
+        data = response.get_json()
+        assert data['status'] == 'PENDING'  # Not auto-approved for MEMBER
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_post_item_missing_name_returns_400(client):
+    """POST /api/items without name returns 400."""
+    response = client.post('/api/items', json={})
+    assert response.status_code == 400
+    data = response.get_json()
+    assert 'error' in data
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_post_item_invalid_json_returns_400(client):
+    """POST /api/items with invalid JSON returns 400."""
+    response = client.post('/api/items', data='not json', content_type='application/json')
+    assert response.status_code in [400, 415]
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_get_items_returns_created_items(client):
+    """GET /api/items returns created items."""
+    client.post('/api/items', json={'name': 'Bread'})
+    client.post('/api/items', json={'name': 'Eggs'})
+
+    response = client.get('/api/items')
+    data = response.get_json()
+    assert len(data) == 2
+    names = [item['name'] for item in data]
+    assert 'Bread' in names
+    assert 'Eggs' in names
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_put_item_updates_status_manager(client):
+    """PUT /api/items/<id> updates status (MANAGER only)."""
+    create_response = client.post('/api/items', json={'name': 'Candy'})
+    item_id = create_response.get_json()['_id']
+
+    update_response = client.put(f'/api/items/{item_id}', json={'status': 'REJECTED'})
+    assert update_response.status_code == 200
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_put_item_status_forbidden_for_member(client):
+    """PUT /api/items/<id> status change forbidden for MEMBER."""
+    # Create item as MANAGER
+    create_response = client.post('/api/items', json={'name': 'Candy'})
+    item_id = create_response.get_json()['_id']
+
+    # Try to update status as MEMBER
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        update_response = client.put(f'/api/items/{item_id}', json={'status': 'APPROVED'})
+        assert update_response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_put_item_updates_quantity(client):
+    """PUT /api/items/<id> allows anyone to update quantity."""
+    create_response = client.post('/api/items', json={'name': 'Candy'})
+    item_id = create_response.get_json()['_id']
+
+    update_response = client.put(f'/api/items/{item_id}', json={'quantity': 5})
+    assert update_response.status_code == 200
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_put_item_invalid_quantity_returns_400(client):
+    """PUT /api/items/<id> rejects invalid quantity."""
+    create_response = client.post('/api/items', json={'name': 'Candy'})
+    item_id = create_response.get_json()['_id']
+
+    # Test negative quantity
+    update_response = client.put(f'/api/items/{item_id}', json={'quantity': 0})
+    assert update_response.status_code == 400
+
+    # Test non-integer quantity
+    update_response = client.put(f'/api/items/{item_id}', json={'quantity': 'abc'})
+    assert update_response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_put_item_not_found_returns_404(client):
+    """PUT /api/items/<id> returns 404 for non-existent item."""
+    fake_id = str(ObjectId())
+    response = client.put(f'/api/items/{fake_id}', json={'status': 'APPROVED'})
+    assert response.status_code == 404
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_delete_item_by_manager(client):
+    """DELETE /api/items/<id> allows MANAGER to delete any item."""
+    create_response = client.post('/api/items', json={'name': 'Juice'})
+    item_id = create_response.get_json()['_id']
+
+    delete_response = client.delete(f'/api/items/{item_id}')
+    assert delete_response.status_code == 204
+
+    get_response = client.get('/api/items')
+    assert len(get_response.get_json()) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_item_by_owner(client):
+    """DELETE /api/items/<id> allows owner to delete their own item."""
+
+    # Create item as MEMBER
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        create_response = client.post('/api/items', json={'name': 'Snack'})
+        item_id = create_response.get_json()['_id']
+
+        # Owner can delete their own item
+        delete_response = client.delete(f'/api/items/{item_id}')
+        assert delete_response.status_code == 204
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_item_forbidden_for_non_owner_member(client, mock_db):
+    """DELETE /api/items/<id> forbidden for MEMBER who doesn't own item."""
+
+    # Create item as MANAGER
+    create_response = client.post('/api/items', json={'name': 'Snack'})
+    item_id = create_response.get_json()['_id']
+
+    # Try to delete as different MEMBER
+    def mock_decode_other_member(token):
+        return {'user_id': 'other-member-999', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Other Member', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_other_member):
+        delete_response = client.delete(f'/api/items/{item_id}')
+        assert delete_response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_item_not_found_returns_404(client):
+    """DELETE /api/items/<id> returns 404 for non-existent item."""
+    fake_id = str(ObjectId())
+    response = client.delete(f'/api/items/{fake_id}')
+    assert response.status_code == 404
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_delete_all_items_by_manager(client):
+    """DELETE /api/items/clear allows MANAGER to clear all items."""
+    # Create multiple items
+    client.post('/api/items', json={'name': 'Item1'})
+    client.post('/api/items', json={'name': 'Item2'})
+    client.post('/api/items', json={'name': 'Item3'})
+
+    # Clear all
+    response = client.delete('/api/items/clear')
+    assert response.status_code == 204
+
+    # Verify all deleted
+    get_response = client.get('/api/items')
+    assert len(get_response.get_json()) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_all_items_forbidden_for_member(client):
+    """DELETE /api/items/clear forbidden for MEMBER."""
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        response = client.delete('/api/items/clear')
+        assert response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_crud_flow_complete(client):
+    """Test complete CRUD flow for items."""
+    # CREATE
+    create_resp = client.post('/api/items', json={'name': 'Coffee'})
+    assert create_resp.status_code == 201
+    item_id = create_resp.get_json()['_id']
+
+    # READ
+    get_resp = client.get('/api/items')
+    assert len(get_resp.get_json()) == 1
+
+    # UPDATE
+    update_resp = client.put(f'/api/items/{item_id}', json={'quantity': 3})
+    assert update_resp.status_code == 200
+
+    # DELETE
+    delete_resp = client.delete(f'/api/items/{item_id}')
+    assert delete_resp.status_code == 204
+
+    # Verify deletion
+    assert client.get('/api/items').get_json() == []
+
+
+# --- Multi-Tenancy Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_items_isolated_by_group(client, mock_db):
+    """Items are isolated by group_id (multi-tenancy)."""
+    # Create item in group A
+    client.post('/api/items', json={'name': 'Group A Item'})
+
+    # Switch to group B
+    def mock_decode_group_b(token):
+        return {'user_id': 'user-b', 'group_id': 'group-B', 'role': 'MANAGER',
+                'user_name': 'User B', 'group_name': 'Group B', 'join_code': 'GROUPB'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_group_b):
+        # Group B should not see Group A's items
+        response = client.get('/api/items')
+        assert len(response.get_json()) == 0
+
+        # Create item in group B
+        client.post('/api/items', json={'name': 'Group B Item'})
+        response = client.get('/api/items')
+        assert len(response.get_json()) == 1
+        assert response.get_json()[0]['name'] == 'Group B Item'
+
+
+# --- Auth API Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_register_group_success(client, mock_db):
+    """POST /api/auth/register creates group and admin user."""
+    response = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert 'details' in data
+    assert 'join_code' in data['details']
+    assert data['details']['role'] == 'MANAGER'
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_register_duplicate_email_returns_400(client, mock_db):
+    """POST /api/auth/register rejects duplicate email."""
+    # First registration
+    client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    # Duplicate email
+    response = client.post('/api/auth/register', json={
+        'group_name': 'Another Family',
+        'user_name': 'John Doe',
+        'email': 'john@smith.com',
+        'password': 'password456'
+    })
+
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_register_missing_fields_returns_400(client):
+    """POST /api/auth/register rejects missing required fields."""
+    response = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family'
+        # Missing user_name, email, password
+    })
+
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_join_group_success(client, mock_db):
+    """POST /api/auth/join allows member to join via join code."""
+    # Create group first
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    join_code = register_resp.get_json()['details']['join_code']
+
+    # Join as member
+    response = client.post('/api/auth/join', json={
+        'join_code': join_code,
+        'user_name': 'Jane Smith',
+        'email': 'jane@smith.com',
+        'password': 'password456'
+    })
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data['details']['role'] == 'MEMBER'
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_join_invalid_code_returns_400(client):
+    """POST /api/auth/join rejects invalid join code."""
+    response = client.post('/api/auth/join', json={
+        'join_code': 'INVALID',
+        'user_name': 'Jane Doe',
+        'email': 'jane@example.com',
+        'password': 'password123'
+    })
+
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_join_duplicate_email_returns_400(client, mock_db):
+    """POST /api/auth/join rejects duplicate email."""
+    # Create group
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    join_code = register_resp.get_json()['details']['join_code']
+
+    # Try to join with same email
+    response = client.post('/api/auth/join', json={
+        'join_code': join_code,
+        'user_name': 'John Again',
+        'email': 'john@smith.com',
+        'password': 'password456'
+    })
+
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_login_success(client, mock_db):
+    """POST /api/auth/login returns token for valid credentials."""
+    # Register first
+    client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    # Login
+    response = client.post('/api/auth/login', json={
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'token' in data
+    assert isinstance(data['token'], str)
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_login_invalid_credentials_returns_401(client, mock_db):
+    """POST /api/auth/login rejects invalid credentials."""
+    # Register first
+    client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    # Wrong password
+    response = client.post('/api/auth/login', json={
+        'email': 'john@smith.com',
+        'password': 'wrongpassword'
+    })
+
+    assert response.status_code == 401
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_login_missing_fields_returns_400(client):
+    """POST /api/auth/login rejects missing credentials."""
+    response = client.post('/api/auth/login', json={
+        'email': 'john@smith.com'
+        # Missing password
+    })
+
+    assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_get_current_user_success(client):
+    """GET /api/auth/me returns current user info."""
+    response = client.get('/api/auth/me')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'user_id' in data
+    assert 'user_name' in data
+    assert 'role' in data
+    assert 'group_id' in data
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_get_current_user_no_token_returns_401(app):
+    """GET /api/auth/me returns 401 without token."""
+    test_client = app.test_client()
+    response = test_client.get('/api/auth/me')
+
+    assert response.status_code == 401
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_api_invalid_token_returns_401(app):
+    """API endpoints reject invalid tokens."""
+    test_client = app.test_client()
+    test_client.environ_base['HTTP_AUTHORIZATION'] = 'Bearer invalid.token.here'
+
+    response = test_client.get('/api/items')
+    assert response.status_code == 401
+
+
+# --- Group Management API Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_get_group_members_success(client, mock_db):
+    """GET /api/groups/members returns member list for MANAGER."""
+    # Register creates a user in the mock DB
+    client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+
+    response = client.get('/api/groups/members')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert isinstance(data, list)
+
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_update_member_role_success(client, mock_db):
+    """PUT /api/groups/members/<id> allows MANAGER to update role."""
+    # Create group and members
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
+
+    join_resp = client.post('/api/auth/join', json={
+        'join_code': join_code,
+        'user_name': 'Jane Smith',
+        'email': 'jane@smith.com',
+        'password': 'password456'
+    })
+    member_id = join_resp.get_json()['details']['user_id']
+
+    # Patch token to match the created group and admin
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
+        # Promote to MANAGER
+        response = client.put(f'/api/groups/members/{member_id}', json={'role': 'MANAGER'})
         assert response.status_code == 200
-        assert 'text/html' in response.headers.get('Content-Type', '')
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Frontend not running")
 
 
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_api_requires_authentication():
-    """API endpoints require authentication."""
-    try:
-        response = requests.get(f'{BASE_URL}/api/items', timeout=5)
-        assert response.status_code == 401
-        data = response.json()
-        assert 'error' in data or 'Unauthorized' in str(data)
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
-
-
-# --- Complete User Journey Tests ---
-
-@pytest.mark.e2e
+@pytest.mark.integration
 @pytest.mark.p1
-def test_complete_manager_journey():
-    """
-    Complete manager workflow:
-    1. Register group
-    2. Login
-    3. Add item (auto-approved)
-    4. Update quantity
-    5. Delete item
-    """
-    try:
-        timestamp = str(time.time())
-        email = f"manager-{timestamp}@test.com"
-        password = "secure123"
+def test_update_member_role_forbidden_for_member(client, mock_db):
+    """PUT /api/groups/members/<id> forbidden for MEMBER."""
 
-        # 1. Register
-        register_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'E2E Test Family {timestamp}',
-            'user_name': 'Manager User',
-            'email': email,
-            'password': password
-        }, timeout=5)
-        assert register_resp.status_code == 201
+    fake_user_id = str(ObjectId())
 
-        # 2. Login
-        login_resp = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': email,
-            'password': password
-        }, timeout=5)
-        assert login_resp.status_code == 200
-        
-        token = login_resp.json().get('token')
-        assert token is not None
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
 
-        headers = {'Authorization': f'Bearer {token}'}
-
-        # 3. Add item
-        create_resp = requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Test Milk', 'category': 'Dairy'},
-            headers=headers,
-            timeout=5
-        )
-        assert create_resp.status_code == 201
-        item_id = create_resp.json()['_id']
-        assert create_resp.json()['status'] == 'APPROVED'  # Auto-approved for MANAGER
-
-        # 4. Update quantity
-        update_resp = requests.put(f'{BASE_URL}/api/items/{item_id}',
-            json={'quantity': 3},
-            headers=headers,
-            timeout=5
-        )
-        assert update_resp.status_code == 200
-
-        # 5. Delete item
-        delete_resp = requests.delete(f'{BASE_URL}/api/items/{item_id}',
-            headers=headers,
-            timeout=5
-        )
-        assert delete_resp.status_code == 204
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        response = client.put(f'/api/groups/members/{fake_user_id}', json={'role': 'MANAGER'})
+        assert response.status_code == 403
 
 
-@pytest.mark.e2e
+@pytest.mark.integration
 @pytest.mark.p1
-def test_multi_user_collaboration():
-    """
-    Multi-user workflow:
-    1. Manager registers group
-    2. Member joins group
-    3. Member adds item (pending)
-    4. Manager approves item
-    5. Both users see the item
-    """
-    try:
-        timestamp = str(time.time())
+def test_update_member_invalid_role_returns_400(client, mock_db):
+    """PUT /api/groups/members/<id> rejects invalid role."""
+    # Create member
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
 
-        # 1. Manager registers
-        manager_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Collab Family {timestamp}',
-            'user_name': 'Manager',
-            'email': f'manager-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-        assert manager_resp.status_code == 201
-        join_code = manager_resp.json()['details']['join_code']
+    join_resp = client.post('/api/auth/join', json={
+        'join_code': join_code,
+        'user_name': 'Jane Smith',
+        'email': 'jane@smith.com',
+        'password': 'password456'
+    })
+    member_id = join_resp.get_json()['details']['user_id']
 
-        # Login as manager to get token
-        manager_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'manager-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
+    # Patch token
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
 
-        if manager_login.status_code != 200:
-            pytest.skip("Login failed - likely system not ready")
-
-        manager_token = manager_login.json()['token']
-        manager_headers = {'Authorization': f'Bearer {manager_token}'}
-
-        # 2. Member joins
-        member_resp = requests.post(f'{BASE_URL}/api/auth/join', json={
-            'join_code': join_code,
-            'user_name': 'Member',
-            'email': f'member-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-        assert member_resp.status_code == 201
-
-        # Login as member
-        member_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'member-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-        member_token = member_login.json()['token']
-        member_headers = {'Authorization': f'Bearer {member_token}'}
-
-        # 3. Member adds item
-        member_item_resp = requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Member Item', 'category': 'Snacks'},
-            headers=member_headers,
-            timeout=5
-        )
-        assert member_item_resp.status_code == 201
-        item_id = member_item_resp.json()['_id']
-        assert member_item_resp.json()['status'] == 'PENDING'
-
-        # 4. Manager approves
-        approve_resp = requests.put(f'{BASE_URL}/api/items/{item_id}',
-            json={'status': 'APPROVED'},
-            headers=manager_headers,
-            timeout=5
-        )
-        assert approve_resp.status_code == 200
-
-        # 5. Both users see the item
-        manager_items = requests.get(f'{BASE_URL}/api/items',
-            headers=manager_headers,
-            timeout=5
-        )
-        assert manager_items.status_code == 200
-        assert len(manager_items.json()) > 0
-
-        member_items = requests.get(f'{BASE_URL}/api/items',
-            headers=member_headers,
-            timeout=5
-        )
-        assert member_items.status_code == 200
-        assert len(member_items.json()) > 0
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
+        # Try invalid role
+        response = client.put(f'/api/groups/members/{member_id}', json={'role': 'ADMIN'})
+        assert response.status_code == 400
 
 
-@pytest.mark.e2e
+@pytest.mark.integration
 @pytest.mark.p1
-def test_role_based_permissions():
-    """
-    Test role-based access control:
-    1. Manager can approve items
-    2. Member cannot approve items
-    3. Manager can delete any item
-    4. Member can only delete own items
-    """
-    try:
-        timestamp = str(time.time())
+def test_update_self_role_returns_400(client, mock_db):
+    """PUT /api/groups/members/<id> prevents self-promotion."""
+    # Create user
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    details = register_resp.get_json()['details']
+    user_id = details['user_id']
+    group_id = details['group_id']
 
-        # Create group with manager
-        manager_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'RBAC Family {timestamp}',
-            'user_name': 'Manager',
-            'email': f'manager-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-        join_code = manager_resp.json()['details']['join_code']
+    # Try to change own role
+    def mock_decode_self(token):
+        return {'user_id': user_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': 'TEST123'}
 
-        manager_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'manager-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-
-        if manager_login.status_code != 200:
-            pytest.skip("Login failed")
-
-        manager_token = manager_login.json()['token']
-        manager_headers = {'Authorization': f'Bearer {manager_token}'}
-
-        # Add member
-        member_resp = requests.post(f'{BASE_URL}/api/auth/join', json={
-            'join_code': join_code,
-            'user_name': 'Member',
-            'email': f'member-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-
-        member_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'member-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-        member_token = member_login.json()['token']
-        member_headers = {'Authorization': f'Bearer {member_token}'}
-
-        # Member creates item (pending)
-        item_resp = requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Pending Item'},
-            headers=member_headers,
-            timeout=5
-        )
-        item_id = item_resp.json()['_id']
-
-        # Member tries to approve (should fail)
-        member_approve = requests.put(f'{BASE_URL}/api/items/{item_id}',
-            json={'status': 'APPROVED'},
-            headers=member_headers,
-            timeout=5
-        )
-        assert member_approve.status_code == 403
-
-        # Manager approves (should succeed)
-        manager_approve = requests.put(f'{BASE_URL}/api/items/{item_id}',
-            json={'status': 'APPROVED'},
-            headers=manager_headers,
-            timeout=5
-        )
-        assert manager_approve.status_code == 200
-
-        # Manager creates another item
-        manager_item_resp = requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Manager Item'},
-            headers=manager_headers,
-            timeout=5
-        )
-        manager_item_id = manager_item_resp.json()['_id']
-
-        # Member tries to delete manager's item (should fail)
-        member_delete = requests.delete(f'{BASE_URL}/api/items/{manager_item_id}',
-            headers=member_headers,
-            timeout=5
-        )
-        assert member_delete.status_code == 403
-
-        # Manager deletes item (should succeed)
-        manager_delete = requests.delete(f'{BASE_URL}/api/items/{manager_item_id}',
-            headers=manager_headers,
-            timeout=5
-        )
-        assert manager_delete.status_code == 204
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+    with patch.object(auth_module, 'decode_token', mock_decode_self):
+        response = client.put(f'/api/groups/members/{user_id}', json={'role': 'MEMBER'})
+        assert response.status_code == 400
 
 
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_multi_tenancy_isolation():
-    """
-    Test that groups are isolated:
-    1. Create two separate groups
-    2. Each adds items
-    3. Verify items are not visible across groups
-    """
-    try:
-        timestamp = str(time.time())
+@pytest.mark.integration
+@pytest.mark.p0
+def test_delete_member_success(client, mock_db):
+    """DELETE /api/groups/members/<id> allows MANAGER to remove member."""
+    # Create group and member
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    details = register_resp.get_json()['details']
+    group_id = details['group_id']
+    join_code = details['join_code']
+    admin_id = details['user_id']
 
-        # Group A
-        group_a_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Family A {timestamp}',
-            'user_name': 'User A',
-            'email': f'user-a-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
+    join_resp = client.post('/api/auth/join', json={
+        'join_code': join_code,
+        'user_name': 'Jane Smith',
+        'email': 'jane@smith.com',
+        'password': 'password456'
+    })
+    member_id = join_resp.get_json()['details']['user_id']
 
-        login_a = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'user-a-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
+    # Patch token
+    def mock_decode_manager(token):
+        return {'user_id': admin_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': join_code}
 
-        if login_a.status_code != 200:
-            pytest.skip("Login failed")
-
-        token_a = login_a.json()['token']
-        headers_a = {'Authorization': f'Bearer {token_a}'}
-
-        # Group B
-        group_b_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Family B {timestamp}',
-            'user_name': 'User B',
-            'email': f'user-b-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-
-        login_b = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'user-b-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-        token_b = login_b.json()['token']
-        headers_b = {'Authorization': f'Bearer {token_b}'}
-
-        # Group A adds item
-        requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Group A Item'},
-            headers=headers_a,
-            timeout=5
-        )
-
-        # Group B adds item
-        requests.post(f'{BASE_URL}/api/items',
-            json={'name': 'Group B Item'},
-            headers=headers_b,
-            timeout=5
-        )
-
-        # Verify isolation
-        items_a = requests.get(f'{BASE_URL}/api/items', headers=headers_a, timeout=5).json()
-        items_b = requests.get(f'{BASE_URL}/api/items', headers=headers_b, timeout=5).json()
-
-        # Each group should only see their own item
-        assert len(items_a) >= 1
-        assert len(items_b) >= 1
-        assert all('Group A' in item['name'] or item['name'] != 'Group B Item' for item in items_a)
-        assert all('Group B' in item['name'] or item['name'] != 'Group A Item' for item in items_b)
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
-
-
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_group_management_workflow():
-    """
-    Test group management:
-    1. Manager creates group
-    2. Members join
-    3. Manager views members
-    4. Manager promotes member to manager
-    5. Manager removes member
-    """
-    try:
-        timestamp = str(time.time())
-
-        # 1. Manager creates group
-        manager_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Managed Family {timestamp}',
-            'user_name': 'Admin',
-            'email': f'admin-{timestamp}@test.com',
-            'password': 'admin123'
-        }, timeout=5)
-        join_code = manager_resp.json()['details']['join_code']
-
-        manager_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'admin-{timestamp}@test.com',
-            'password': 'admin123'
-        }, timeout=5)
-
-        if manager_login.status_code != 200:
-            pytest.skip("Login failed")
-
-        manager_token = manager_login.json()['token']
-        manager_headers = {'Authorization': f'Bearer {manager_token}'}
-
-        # 2. Member joins
-        member_resp = requests.post(f'{BASE_URL}/api/auth/join', json={
-            'join_code': join_code,
-            'user_name': 'Regular Member',
-            'email': f'member-{timestamp}@test.com',
-            'password': 'member123'
-        }, timeout=5)
-        member_id = member_resp.json()['details']['user_id']
-
-        # 3. Manager views members
-        members_resp = requests.get(f'{BASE_URL}/api/groups/members',
-            headers=manager_headers,
-            timeout=5
-        )
-        assert members_resp.status_code == 200
-        members = members_resp.json()
-        assert len(members) == 2  # Admin + Member
-
-        # 4. Manager promotes member
-        promote_resp = requests.put(f'{BASE_URL}/api/groups/members/{member_id}',
-            json={'role': 'MANAGER'},
-            headers=manager_headers,
-            timeout=5
-        )
-        assert promote_resp.status_code == 200
-
-        # 5. Manager creates another member to remove
-        remove_member_resp = requests.post(f'{BASE_URL}/api/auth/join', json={
-            'join_code': join_code,
-            'user_name': 'Temp Member',
-            'email': f'temp-{timestamp}@test.com',
-            'password': 'temp123'
-        }, timeout=5)
-        temp_member_id = remove_member_resp.json()['details']['user_id']
-
+    with patch.object(auth_module, 'decode_token', mock_decode_manager):
         # Remove member
-        delete_resp = requests.delete(f'{BASE_URL}/api/groups/members/{temp_member_id}',
-            headers=manager_headers,
-            timeout=5
-        )
-        assert delete_resp.status_code == 204
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+        response = client.delete(f'/api/groups/members/{member_id}')
+        assert response.status_code == 204
 
 
-@pytest.mark.e2e
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_member_forbidden_for_member(client):
+    """DELETE /api/groups/members/<id> forbidden for MEMBER."""
+
+    fake_user_id = str(ObjectId())
+
+    def mock_decode_member(token):
+        return {'user_id': 'member-123', 'group_id': 'test-group-456', 'role': 'MEMBER',
+                'user_name': 'Member User', 'group_name': 'Test Group', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_member):
+        response = client.delete(f'/api/groups/members/{fake_user_id}')
+        assert response.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_self_returns_400(client, mock_db):
+    """DELETE /api/groups/members/<id> prevents self-deletion."""
+    # Create user
+    register_resp = client.post('/api/auth/register', json={
+        'group_name': 'Smith Family',
+        'user_name': 'John Smith',
+        'email': 'john@smith.com',
+        'password': 'secure123'
+    })
+    details = register_resp.get_json()['details']
+    user_id = details['user_id']
+    group_id = details['group_id']
+
+    # Try to delete self
+
+    def mock_decode_self(token):
+        return {'user_id': user_id, 'group_id': group_id, 'role': 'MANAGER',
+                'user_name': 'John Smith', 'group_name': 'Smith Family', 'join_code': 'TEST123'}
+
+    with patch.object(auth_module, 'decode_token', mock_decode_self):
+        response = client.delete(f'/api/groups/members/{user_id}')
+        assert response.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_delete_member_not_found_returns_404(client):
+    """DELETE /api/groups/members/<id> returns 404 for non-existent user."""
+    fake_id = str(ObjectId())
+    response = client.delete(f'/api/groups/members/{fake_id}')
+
+    assert response.status_code == 404
+
+
+# --- Health Endpoint Tests ---
+
+@pytest.mark.integration
 @pytest.mark.p2
-def test_clear_list_workflow():
-    """
-    Test bulk delete functionality:
-    1. Manager creates multiple items
-    2. Manager clears all items
-    3. Verify list is empty
-    """
-    try:
-        timestamp = str(time.time())
+def test_health_endpoint_returns_200(app):
+    """GET /health returns 200 when healthy."""
+    test_client = app.test_client()
+    response = test_client.get('/api/health')
 
-        # Register and login
-        register_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Clear Test {timestamp}',
-            'user_name': 'Manager',
-            'email': f'clear-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-
-        login_resp = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': f'clear-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-
-        if login_resp.status_code != 200:
-            pytest.skip("Login failed")
-
-        token = login_resp.json()['token']
-        headers = {'Authorization': f'Bearer {token}'}
-
-        # Create multiple items
-        for i in range(5):
-            requests.post(f'{BASE_URL}/api/items',
-                json={'name': f'Item {i}'},
-                headers=headers,
-                timeout=5
-            )
-
-        # Verify items exist
-        items_resp = requests.get(f'{BASE_URL}/api/items', headers=headers, timeout=5)
-        assert len(items_resp.json()) == 5
-
-        # Clear all
-        clear_resp = requests.delete(f'{BASE_URL}/api/items/clear',
-            headers=headers,
-            timeout=5
-        )
-        assert clear_resp.status_code == 204
-
-        # Verify empty
-        after_clear = requests.get(f'{BASE_URL}/api/items', headers=headers, timeout=5)
-        assert len(after_clear.json()) == 0
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
-
-
-@pytest.mark.e2e
-@pytest.mark.p2
-def test_error_handling():
-    """
-    Test error scenarios:
-    1. Invalid credentials
-    2. Duplicate email
-    3. Invalid join code
-    4. Missing authentication
-    """
-    try:
-        timestamp = str(time.time())
-
-        # 1. Invalid credentials
-        invalid_login = requests.post(f'{BASE_URL}/api/auth/login', json={
-            'email': 'nonexistent@test.com',
-            'password': 'wrongpass'
-        }, timeout=5)
-        assert invalid_login.status_code == 401
-
-        # 2. Duplicate email
-        requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': f'Error Test {timestamp}',
-            'user_name': 'User',
-            'email': f'duplicate-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-
-        duplicate_resp = requests.post(f'{BASE_URL}/api/auth/register', json={
-            'group_name': 'Another Group',
-            'user_name': 'Another User',
-            'email': f'duplicate-{timestamp}@test.com',
-            'password': 'pass456'
-        }, timeout=5)
-        assert duplicate_resp.status_code == 400
-
-        # 3. Invalid join code
-        invalid_join = requests.post(f'{BASE_URL}/api/auth/join', json={
-            'join_code': 'INVALID',
-            'user_name': 'User',
-            'email': f'new-{timestamp}@test.com',
-            'password': 'pass123'
-        }, timeout=5)
-        assert invalid_join.status_code == 400
-
-        # 4. Missing authentication
-        no_auth = requests.get(f'{BASE_URL}/api/items', timeout=5)
-        assert no_auth.status_code == 401
-
-    except requests.exceptions.ConnectionError:
-        pytest.skip("Application not running")
+    assert response.status_code in [200, 503]
+    data = response.get_json()
+    assert 'status' in data
