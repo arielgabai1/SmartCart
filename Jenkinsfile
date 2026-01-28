@@ -51,11 +51,11 @@ pipeline {
                     echo "=== Container Status ==="
                     docker compose ps -a
 
-                    sleep 10
+                    sleep 40
 
                     echo "=== Backend Logs ==="
                     docker compose logs backend --tail=50
-                    
+
                     echo "=== Testing Health Endpoint ==="
                     curl -v http://localhost/api/health || true
                 '''
