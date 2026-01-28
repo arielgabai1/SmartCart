@@ -47,10 +47,24 @@ pipeline {
             steps {
                 sh 'docker compose up -d --build'
 
+                sh '''
+                    echo "=== Container Status ==="
+                    docker compose ps -a
+
+                    echo "=== Backend Logs ==="
+                    docker compose logs backend --tail=30
+
+                    echo "=== Testing Health Endpoint ==="
+                    curl -v http://localhost/api/health || true
+                '''
+
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
                             def result = sh(script: 'curl -sf http://localhost/api/health', returnStatus: true)
+                            if (result != 0) {
+                                echo "Health check failed, retrying..."
+                            }
                             return result == 0
                         }
                     }
