@@ -19,7 +19,7 @@ pipeline {
 
     stages {
 
-        stage('Unit Test') {
+        stage('Unit Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 // Run unit tests with mocked DB
@@ -39,6 +39,24 @@ pipeline {
                     docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} -t ${BACKEND_IMAGE}:latest ./backend
                     docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} -t ${FRONTEND_IMAGE}:latest ./frontend
                 '''
+            }
+        }
+
+        stage('Integration Tests') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            steps {
+                sh 'docker compose up -d --build'
+
+                timeout(time: 60, unit: 'SECONDS') {
+                    waitUntil {
+                        script {
+                            def result = sh(script: 'curl -sf http://localhost/api/health', returnStatus: true)
+                            return result == 0
+                        }
+                    }
+                }
+
+                sh 'docker compose exec -T backend pytest tests/integration_test.py -v --no-cov'
             }
         }
     }

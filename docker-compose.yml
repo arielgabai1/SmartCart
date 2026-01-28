@@ -15,8 +15,10 @@ services:
     container_name: SmartCart
     ports:
       - "8081:8081"
-    env_file:
-      - .env
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - MONGO_URI=${MONGO_URI:-mongodb://database:27017/smartcart}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - database
     restart: on-failure

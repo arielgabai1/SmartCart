@@ -1,7 +1,3 @@
-"""
-E2E tests - Full system with real containers (requires docker-compose up).
-Tests complete user journeys, system integration, and real-world scenarios.
-"""
 import pytest
 import requests
 import time
