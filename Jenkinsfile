@@ -45,7 +45,7 @@ pipeline {
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            sh(script: 'docker compose exec -T backend curl -sf http://frontend/api/health', returnStatus: true) == 0
+                            sh(script: "docker compose exec -T backend python -c 'import requests; requests.get(\"http://frontend/api/health\").raise_for_status()'", returnStatus: true) == 0
                         }
                     }
                 }
