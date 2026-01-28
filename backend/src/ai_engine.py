@@ -61,7 +61,7 @@ def estimate_item_price(item_name: str, category: str) -> tuple[float, str]:
         content = response.choices[0].message.content.strip()
         
         # Robust parsing using Regex to find the first number (integer or float)
-        match = re.search(r'(\d+(?:\.\d+)?)', content)
+        match = re.search(r'(-?\d+(?:\.\d+)?)', content)
         
         if not match:
             AI_ERRORS.inc()
