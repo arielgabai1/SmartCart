@@ -23,11 +23,11 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 // Run unit tests in isolated container
-                sh 'docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from smartcart_test'
+                sh 'docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from smartcart_test'
             }
             post {
                 always {
-                    sh 'docker-compose -f docker-compose.test.yml down -v --remove-orphans || true'
+                    sh 'docker compose -f docker-compose.test.yml down -v --remove-orphans || true'
                 }
             }
         }
@@ -45,8 +45,8 @@ pipeline {
 
     post {
         always { // Cleanup Docker resources
-            sh 'docker-compose down -v --remove-orphans || true'
-            sh 'docker-compose -f docker-compose.test.yml down -v --remove-orphans || true'
+            sh 'docker compose down -v --remove-orphans || true'
+            sh 'docker compose -f docker-compose.test.yml down -v --remove-orphans || true'
             sh 'docker network prune -f || true'
             sh 'docker image prune -af || true'
 
