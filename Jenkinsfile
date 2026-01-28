@@ -76,7 +76,7 @@ pipeline {
         stage('Deploy to GitOps') {
             when { branch 'main' }
             steps {
-                // Implement deployment steps here, updating manifests, triggering ArgoCD sync.
+                echo 'TODO: Implement deployment steps here, updating manifests, triggering ArgoCD sync.'
             }
         }
     }
