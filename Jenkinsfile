@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
-        DOCKER_IMAGE = "${ECR_URL}-backend"
     }
 
     options {
@@ -32,7 +31,7 @@ pipeline {
             steps {
                 script {
                     def tag = env.VERSION ?: 'dev'
-                    sh "docker build -t ${DOCKER_IMAGE}:${tag} ./backend"
+                    sh "docker build -t ${ECR_URL}:${tag} ./backend"
                 }
             }
         }
@@ -50,7 +49,7 @@ pipeline {
                     }
                 }
 
-                sh 'docker compose exec -T backend pytest tests/ -v -p no:cacheprovider'
+                sh 'docker compose exec -T backend pytest'
             }
         }
 
@@ -68,9 +67,9 @@ pipeline {
             when { branch 'main' }
             steps {
                 sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
-                sh "docker tag ${DOCKER_IMAGE}:${env.VERSION} ${DOCKER_IMAGE}:latest"
-                sh "docker push ${DOCKER_IMAGE}:${env.VERSION}"
-                sh "docker push ${DOCKER_IMAGE}:latest"
+                sh "docker tag ${ECR_URL}:${env.VERSION} ${ECR_URL}:latest"
+                sh "docker push ${ECR_URL}:${env.VERSION}"
+                sh "docker push ${ECR_URL}:latest"
             }
         }
     }
