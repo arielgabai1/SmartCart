@@ -59,6 +59,12 @@ pipeline {
                     echo "=== Frontend/Nginx Logs ==="
                     docker compose logs frontend --tail=50
 
+                    echo "=== Check Nginx Process ==="
+                    docker compose exec -T frontend ps aux || true
+
+                    echo "=== Test Nginx Config ==="
+                    docker compose exec -T frontend nginx -t || true
+
                     echo "=== Testing Health Endpoint ==="
                     curl -v http://localhost/api/health || true
                 '''
