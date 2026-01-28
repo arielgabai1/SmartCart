@@ -50,7 +50,7 @@ pipeline {
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            def result = sh(script: 'docker compose exec -T backend curl -sf http://frontend/api/health', returnStatus: true)
+                            def result = sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://frontend/api/health\', timeout=5)"', returnStatus: true)
                             if (result != 0) {
                                 echo "Health check failed, retrying..."
                             }
