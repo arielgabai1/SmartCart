@@ -3,9 +3,7 @@ pipeline {
 
     environment {
         ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
-        GITLAB_REPO = 'https://gitlab.com/arielgabai/smartcart.git'
         DOCKER_IMAGE = "${ECR_URL}-backend"
-        IMAGE_TAG = "v1.0.${BUILD_NUMBER}"
     }
 
     options {
@@ -17,21 +15,28 @@ pipeline {
 
     stages {
 
-        stage('Unit Tests') {
-            when { anyOf { branch 'main'; branch 'feature/*' } }
+        stage('Version Calculation') {
+            when { branch 'main' }
             steps {
-                sh 'docker compose -f docker-compose.test.yml run --rm smartcart_test pytest tests/unit_test.py -v --no-cov'
+                script {
+                    def latestTag = sh(script: 'git describe --tags --abbrev=0', returnStdout: true).trim()
+                    def (major, minor, patch) = latestTag.tokenize('.')
+                    env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
+                }
             }
         }
 
-        stage('Package') { // Build production Docker images
+        stage('Build Docker Image') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh 'docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} -t ${DOCKER_IMAGE}:latest ./backend'
+                script {
+                    def tag = env.VERSION ?: 'dev'
+                    sh "docker build -t ${DOCKER_IMAGE}:${tag} ./backend"
+                }
             }
         }
 
-        stage('Integration Tests') {
+        stage('Unit & Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 sh 'docker compose up -d --build'
@@ -39,30 +44,48 @@ pipeline {
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            def exitCode = sh(script: 'docker compose exec -T backend curl -sf http://localhost:5000/api/health', returnStatus: true)
-                            return exitCode == 0
+                            sh(script: 'docker compose exec -T backend curl -sf http://frontend/api/health', returnStatus: true) == 0
                         }
                     }
                 }
 
-                sh 'docker compose exec -T backend pytest tests/integration_test.py -v --no-cov'
+                sh 'docker compose exec -T backend pytest tests/ -v -p no:cacheprovider'
+            }
+        }
+
+        stage('Tag & Push Release') {
+            when { branch 'main' }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    sh "git tag ${env.VERSION}"
+                    sh "git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git ${env.VERSION}"
+                }
+            }
+        }
+
+        stage('Publish to ECR') {
+            when { branch 'main' }
+            steps {
+                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
+                sh "docker tag ${DOCKER_IMAGE}:${env.VERSION} ${DOCKER_IMAGE}:latest"
+                sh "docker push ${DOCKER_IMAGE}:${env.VERSION}"
+                sh "docker push ${DOCKER_IMAGE}:latest"
             }
         }
     }
 
     post {
-        always { // Cleanup Docker resources
+        always { // Cleanup
             sh 'docker compose down -v --remove-orphans || true'
-            sh 'docker network prune -f || true'
-            sh 'docker image prune -af || true'
+            sh 'docker system prune -af --volumes || true'
+            cleanWs()
 
-            cleanWs() // Clear workspace
-
-            script { // Send Slack notification
+            script { // Slack Notification
                 def colors = [SUCCESS: 'good', FAILURE: 'danger', ABORTED: 'warning']
+                def version = env.VERSION ?: 'dev'
                 slackSend(
                     color: colors[currentBuild.result] ?: 'warning',
-                    message: "Pipeline ${currentBuild.result} - ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.IMAGE_TAG})"
+                    message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
                 )
             }
         }

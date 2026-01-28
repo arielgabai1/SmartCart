@@ -1,8 +1,9 @@
 import pytest
 import requests
 import time
+import os
 
-BASE_URL = 'http://frontend'
+BASE_URL = os.getenv('TEST_BASE_URL', 'http://frontend')
 
 # --- System Health Tests ---
 
