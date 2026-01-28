@@ -20,13 +20,7 @@ pipeline {
         stage('Unit Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                // Run unit tests with mocked DB
                 sh 'docker compose -f docker-compose.test.yml run --rm smartcart_test pytest tests/unit_test.py -v --no-cov'
-            }
-            post {
-                always {
-                    sh 'docker compose -f docker-compose.test.yml down -v --remove-orphans || true'
-                }
             }
         }
 
@@ -40,15 +34,12 @@ pipeline {
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh 'docker compose down -v --remove-orphans || true'
-                // Fix if Docker created conf.d/nginx.conf as a directory
-                sh 'rm -rf conf.d && git checkout conf.d'
-                sh 'export PWD=$(pwd) && docker compose up -d --build'
+                sh 'docker compose up -d --build'
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            def exitCode = sh(script: 'docker compose exec -T backend python -c "import requests; requests.get(\'http://localhost:5000/api/health\', timeout=5)"', returnStatus: true)
+                            def exitCode = sh(script: 'docker compose exec -T backend curl -sf http://localhost:5000/api/health', returnStatus: true)
                             return exitCode == 0
                         }
                     }
@@ -62,7 +53,6 @@ pipeline {
     post {
         always { // Cleanup Docker resources
             sh 'docker compose down -v --remove-orphans || true'
-            sh 'docker compose -f docker-compose.test.yml down -v --remove-orphans || true'
             sh 'docker network prune -f || true'
             sh 'docker image prune -af || true'
 
