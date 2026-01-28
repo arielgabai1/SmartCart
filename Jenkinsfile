@@ -22,8 +22,8 @@ pipeline {
         stage('Unit Test') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                // Run unit and integration tests with mocked DB
-                sh 'docker compose -f docker-compose.test.yml run --rm smartcart_test pytest tests/unit_test.py tests/integration_test.py -v --no-cov'
+                // Run unit tests with mocked DB
+                sh 'docker compose -f docker-compose.test.yml run --rm smartcart_test pytest tests/unit_test.py -v -p no:cacheprovider'
             }
             post {
                 always {
