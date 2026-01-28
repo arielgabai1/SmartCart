@@ -56,6 +56,9 @@ pipeline {
                     echo "=== Backend Logs ==="
                     docker compose logs backend --tail=50
 
+                    echo "=== Frontend/Nginx Logs ==="
+                    docker compose logs frontend --tail=50
+
                     echo "=== Testing Health Endpoint ==="
                     curl -v http://localhost/api/health || true
                 '''
