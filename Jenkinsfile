@@ -36,7 +36,7 @@ pipeline {
             }
         }
 
-        stage('Unit & Integration Tests') {
+        stage('E2E Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 sh 'docker compose up -d --build'
