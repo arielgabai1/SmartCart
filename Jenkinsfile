@@ -19,6 +19,7 @@ pipeline {
             when { branch 'main' }
             steps {
                 script {
+                    sh 'git fetch --tags'
                     def latestTag = sh(script: 'git describe --tags --abbrev=0', returnStdout: true).trim()
                     def (major, minor, patch) = latestTag.tokenize('.')
                     env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
