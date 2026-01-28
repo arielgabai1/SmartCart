@@ -7,7 +7,6 @@ services:
     environment:
       - MONGO_URI=mongodb://test-db:27017/smartcart_test
       - JWT_SECRET=test-secret
-      - PYTEST_CACHE_DIR=/tmp/.pytest_cache
     depends_on:
       - test_db
     networks:
