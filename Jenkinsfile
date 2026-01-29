@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
+        FRONTEND_ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart-frontend'
     }
 
     options {
@@ -49,7 +50,11 @@ pipeline {
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh "BACKEND_IMAGE=${BACKEND_IMAGE} docker compose up -d"
+                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
+                script {
+                    env.FRONTEND_IMAGE = "${FRONTEND_ECR_URL}:latest"
+                }
+                sh "FRONTEND_IMAGE=${env.FRONTEND_IMAGE} BACKEND_IMAGE=${BACKEND_IMAGE} docker compose up -d"
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {

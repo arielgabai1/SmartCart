@@ -1,7 +1,7 @@
 name: smartcart
 services:
   frontend:
-    build: ./frontend
+    image: ${FRONTEND_IMAGE}
     container_name: nginx
     ports:
       - "80:80"
