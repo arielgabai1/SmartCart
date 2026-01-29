@@ -33,7 +33,7 @@ pipeline {
                 script {
                     env.IMAGE_TAG = env.VERSION ?: 'dev'
                     env.BACKEND_IMAGE = "${ECR_URL}:${env.IMAGE_TAG}"
-                    docker.build(env.BACKEND_IMAGE, './backend')
+                    docker.build(env.BACKEND_IMAGE)
                 }
             }
         }
@@ -42,7 +42,7 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside { sh 'cd backend && pytest tests/unit_tests.py' }
+                    docker.image(env.BACKEND_IMAGE).inside { sh 'pytest tests/unit_tests.py' }
                 }
             }
         }
@@ -66,7 +66,7 @@ pipeline {
 
                 script {
                     docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
-                        sh 'cd backend && pytest tests/integration_tests.py --no-cov'
+                        sh 'pytest tests/integration_tests.py --no-cov'
                     }
                 }
             }
