@@ -32,7 +32,7 @@ pipeline {
                 script {
                     env.IMAGE_TAG = env.VERSION ?: 'dev'
                     env.BACKEND_IMAGE = "${ECR_URL}:${env.IMAGE_TAG}"
-                    sh "docker build -t ${BACKEND_IMAGE} ./backend"
+                    docker.build(env.BACKEND_IMAGE, './backend')
                 }
             }
         }
@@ -41,9 +41,7 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside('-e JWT_SECRET=test-secret') {
-                        sh 'cd backend && pytest tests/unit_tests.py'
-                    }
+                    docker.image(env.BACKEND_IMAGE).inside { sh 'cd backend && pytest tests/unit_tests.py' }
                 }
             }
         }
@@ -82,10 +80,12 @@ pipeline {
         stage('Publish to ECR') {
             when { branch 'main' }
             steps {
-                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
-                sh "docker tag ${ECR_URL}:${env.VERSION} ${ECR_URL}:latest"
-                sh "docker push ${ECR_URL}:${env.VERSION}"
-                sh "docker push ${ECR_URL}:latest"
+                script {
+                    docker.withRegistry("https://${ECR_URL}", "ecr:${AWS_REGION}:ecr-credentials") {
+                        docker.image(env.BACKEND_IMAGE).push(env.VERSION)
+                        docker.image(env.BACKEND_IMAGE).push('latest')
+                    }
+                }
             }
         }
 
