@@ -80,14 +80,14 @@ pipeline {
         stage('Publish to ECR') {
             when { branch 'main' }
             steps {
+                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
                 script {
-                    docker.withRegistry("https://${ECR_URL}", "ecr:${AWS_REGION}:ecr-credentials") {
-                        docker.image(env.BACKEND_IMAGE).push(env.VERSION)
-                        docker.image(env.BACKEND_IMAGE).push('latest')
-                    }
+                    def image = docker.image(env.BACKEND_IMAGE)
+                    image.push(env.VERSION)
+                    image.push('latest')
                 }
             }
-        }
+        }   
 
         stage('Deploy to GitOps') {
             when { branch 'main' }

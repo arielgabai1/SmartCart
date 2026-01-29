@@ -506,11 +506,11 @@ def test_decode_token_expired():
     """decode_token returns None for expired token."""
     import jwt
     import os
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     secret = os.getenv('JWT_SECRET', 'test-secret-value')
     expired_token = jwt.encode(
-        {'user_id': 'test', 'exp': datetime.utcnow() - timedelta(hours=1)},
+        {'user_id': 'test', 'exp': datetime.now(timezone.utc) - timedelta(hours=1)},
         secret,
         algorithm='HS256'
     )
