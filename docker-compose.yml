@@ -11,13 +11,15 @@ services:
       - frontend-net
 
   backend:
-    build: ./backend
+    image: ${BACKEND_IMAGE}
+    build:
+      context: ./backend
     container_name: SmartCart
     ports:
       - "8081:8081"
     environment:
       - JWT_SECRET=${JWT_SECRET}
-      - MONGO_URI=${MONGO_URI:-mongodb://database:27017/smartcart}
+      - MONGO_URI=${MONGO_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - database

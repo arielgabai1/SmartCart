@@ -30,16 +30,28 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    def tag = env.VERSION ?: 'dev'
-                    sh "docker build -t ${ECR_URL}:${tag} ./backend"
+                    env.IMAGE_TAG = env.VERSION ?: 'dev'
+                    env.BACKEND_IMAGE = "${ECR_URL}:${env.IMAGE_TAG}"
+                    sh "docker build -t ${BACKEND_IMAGE} ./backend"
                 }
             }
         }
 
-        stage('E2E Tests') {
+        stage('Unit Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh 'docker compose up -d --build'
+                script {
+                    docker.image(env.BACKEND_IMAGE).inside('-e JWT_SECRET=test-secret') {
+                        sh 'pytest tests/unit_tests.py'
+                    }
+                }
+            }
+        }
+
+        stage('Integration Tests') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            steps {
+                sh "BACKEND_IMAGE=${BACKEND_IMAGE} docker compose up -d"
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
@@ -49,11 +61,15 @@ pipeline {
                     }
                 }
 
-                sh 'docker compose exec -T backend pytest'
+                script {
+                    docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net --network smartcart_backend-net -e MONGO_URI=${MONGO_URI}') {
+                        sh 'pytest tests/integration_tests.py --no-cov'
+                    }
+                }
             }
         }
 
-        stage('Tag & Push Release') {
+        stage('Git Tag & Push') {
             when { branch 'main' }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
@@ -86,13 +102,11 @@ pipeline {
             sh 'docker compose down -v --remove-orphans || true'
             sh 'docker system prune -af --volumes || true'
             cleanWs()
-
             script { // Slack Notification
                 def colors = [SUCCESS: 'good', FAILURE: 'danger', ABORTED: 'warning']
                 def version = env.VERSION ?: 'dev'
                 slackSend(
-                    color: colors[currentBuild.result] ?: 'warning',
-                    message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
+                    color: colors[currentBuild.result] ?: 'warning', message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
                 )
             }
         }
