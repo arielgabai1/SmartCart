@@ -6,34 +6,9 @@ import pytest
 import requests
 import uuid
 import os
-from pymongo import MongoClient
 
 # Base URL for API calls - defaults to frontend for CI, override with TEST_BASE_URL for local
 BASE_URL = os.getenv('TEST_BASE_URL', 'http://frontend/api')
-
-# MongoDB connection - get from env
-MONGO_URI = os.getenv('MONGO_URI')
-
-
-def _clean_collections(db):
-    """Delete all documents from test collections."""
-    for collection in ['items', 'users', 'groups']:
-        try:
-            db[collection].delete_many({})
-        except Exception as e:
-            print(f"Warning: Could not clean {collection}: {e}")
-
-
-@pytest.fixture(autouse=True)
-def clean_db():
-    """Clean test data from database before and after each test."""
-    client = MongoClient(MONGO_URI)
-    db = client.get_database()
-    _clean_collections(db)
-    yield
-    _clean_collections(db)
-    client.close()
-
 
 def unique_email():
     """Generate unique email for testing."""

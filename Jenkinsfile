@@ -42,7 +42,7 @@ pipeline {
             steps {
                 script {
                     docker.image(env.BACKEND_IMAGE).inside('-e JWT_SECRET=test-secret') {
-                        sh 'pytest tests/unit_tests.py'
+                        sh 'cd backend && pytest tests/unit_tests.py'
                     }
                 }
             }
@@ -62,8 +62,8 @@ pipeline {
                 }
 
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net --network smartcart_backend-net -e MONGO_URI=${MONGO_URI}') {
-                        sh 'pytest tests/integration_tests.py --no-cov'
+                    docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
+                        sh 'cd backend && pytest tests/integration_tests.py --no-cov'
                     }
                 }
             }
