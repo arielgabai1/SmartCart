@@ -18,11 +18,13 @@ pipeline {
         stage('Version Calculation') {
             when { branch 'main' }
             steps {
-                script {
-                    sh 'git fetch --tags'
-                    def latestTag = sh(script: 'git describe --tags --abbrev=0', returnStdout: true).trim()
-                    def (major, minor, patch) = latestTag.tokenize('.')
-                    env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
+                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    script {
+                        sh "git fetch https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git --tags"
+                        def latestTag = sh(script: 'git describe --tags --abbrev=0', returnStdout: true).trim()
+                        def (major, minor, patch) = latestTag.tokenize('.')
+                        env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
+                    }
                 }
             }
         }
