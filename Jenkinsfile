@@ -99,7 +99,18 @@ pipeline {
         stage('Deploy to GitOps') {
             when { branch 'main' }
             steps {
-                echo 'TODO: Implement deployment steps here, updating manifests, triggering ArgoCD sync.'
+                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    sh """
+                        git clone https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git
+                        cd smartcart-gitops
+                        sed -i '/repository: 043187663485.dkr.ecr.ap-south-1.amazonaws.com\\/smartcart\$/{ n; s/tag: ".*"/tag: "${env.VERSION}"/; }' smartcart/values.yaml
+                        git config user.email "jenkins@ariel.com"
+                        git config user.name "Ariel's Jenkins Bot"
+                        git add smartcart/values.yaml
+                        git commit -m "update backend image to ${env.VERSION}"
+                        git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git main
+                    """
+                }
             }
         }
     }
