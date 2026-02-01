@@ -9,7 +9,8 @@ from prometheus_client import Histogram, Counter
 logger = logging.getLogger(__name__)
 
 # Metric definition
-AI_LATENCY = Histogram('ai_latency_seconds', 'Time spent estimating item price via OpenAI', ['status'])
+AI_ESTIMATIONS = Counter('ai_estimations_total', 'Total AI price estimations')
+AI_LATENCY = Histogram('ai_estimation_duration_seconds', 'AI estimation duration in seconds', ['status'])
 AI_ERRORS = Counter('ai_errors_total', 'Total number of AI pricing errors')
 
 _client = None
@@ -28,9 +29,10 @@ def estimate_item_price(item_name: str, category: str) -> tuple[float, str]:
     Estimate the average market price of an item in Israel (NIS) using OpenAI.
     Default to 15.0 if AI fails (as per PRD Section 3.3).
     """
+    AI_ESTIMATIONS.inc()
     start_time = time.time()
     status = 'ERROR'
-    
+
     try:
         if not os.environ.get('OPENAI_API_KEY'):
             logger.warning("OPENAI_API_KEY not set, using default price 0.0")

@@ -110,6 +110,8 @@ def test_register_group_success():
     assert data['details']['role'] == 'MANAGER'
     assert 'group_id' in data['details']
     assert 'join_code' in data['details']
+    assert 'token' in data['details']
+    assert len(data['details']['token']) > 50
 
 
 @pytest.mark.integration
@@ -148,6 +150,7 @@ def test_join_group_success(registered_group):
     data = response.json()
     assert data['details']['role'] == 'MEMBER'
     assert data['details']['group_id'] == registered_group['group_id']
+    assert 'token' in data['details']
 
 
 @pytest.mark.integration

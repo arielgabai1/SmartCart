@@ -13,8 +13,9 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY --chown=smartcart_user:smartcartgroup src/ ./src/
 COPY --chown=smartcart_user:smartcartgroup tests/ ./tests/
 COPY --chown=smartcart_user:smartcartgroup pytest.ini .
+COPY --chown=smartcart_user:smartcartgroup gunicorn.conf.py .
 
 RUN chown smartcart_user:smartcartgroup /app
 USER smartcart_user
 
-CMD ["python", "src/app.py"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "src.app:app"]

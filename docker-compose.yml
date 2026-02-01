@@ -21,6 +21,7 @@ services:
     ports:
       - "8081:8081"
     environment:
+      - GUNICORN=true
       - JWT_SECRET=${JWT_SECRET}
       - MONGO_URI=${MONGO_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}

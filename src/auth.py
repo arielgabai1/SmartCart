@@ -129,12 +129,25 @@ def register_group_and_admin(group_name: str, user_name: str, email: str, passwo
         return None, user_errors
     
     user_result = db['users'].insert_one(user_data)
-    
+
+    group = db['groups'].find_one({'_id': group_result.inserted_id})
+    group_name = group['name'] if group else 'SmartCart Group'
+
+    token = generate_token(
+        str(user_result.inserted_id),
+        group_id,
+        'MANAGER',
+        user_name,
+        group_name,
+        join_code
+    )
+
     return {
         'user_id': str(user_result.inserted_id),
         'group_id': group_id,
         'role': 'MANAGER',
-        'join_code': join_code
+        'join_code': join_code,
+        'token': token
     }, []
 
 def register_member_via_code(join_code: str, user_name: str, email: str, password: str) -> Tuple[Optional[Dict[str, Any]], List[str]]:
@@ -163,12 +176,22 @@ def register_member_via_code(join_code: str, user_name: str, email: str, passwor
         return None, user_errors
         
     user_result = db['users'].insert_one(user_data)
-    
+
+    token = generate_token(
+        str(user_result.inserted_id),
+        str(group['_id']),
+        'MEMBER',
+        user_name,
+        group['name'],
+        group.get('join_code')
+    )
+
     return {
         'user_id': str(user_result.inserted_id),
         'group_id': str(group['_id']),
         'role': 'MEMBER',
-        'group_name': group['name']
+        'group_name': group['name'],
+        'token': token
     }, []
 
 def login_user(email: str, password: str) -> Tuple[Optional[str], List[str]]:
