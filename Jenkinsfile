@@ -21,7 +21,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
                     script {
                         sh "git fetch https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git --tags"
-                        def latestTag = sh(script: 'git describe --tags --abbrev=0', returnStdout: true).trim()
+                        def latestTag = sh(script: 'git tag --sort=-v:refname | head -1', returnStdout: true).trim()
                         def (major, minor, patch) = latestTag.tokenize('.')
                         env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
                     }
