@@ -12,7 +12,7 @@ timeout = 30
 keepalive = 5
 graceful_timeout = 30
 
-# Logging
-accesslog = '-'
+# Logging - disable Gunicorn access log, use Flask's structured logging instead
+accesslog = None
 errorlog = '-'
-loglevel = 'info'
+loglevel = 'warning'
