@@ -74,6 +74,38 @@ pipeline {
             }
         }
 
+        stage('Security Scan') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            parallel {
+                stage('Bandit') {
+                    steps {
+                        script {
+                            docker.image(env.BACKEND_IMAGE).inside {
+                                sh 'bandit -r src/ -f json -o bandit.json -c bandit.yaml || true'
+                            }
+                        }
+                        archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
+                    }
+                }
+                stage('pip-audit') {
+                    steps {
+                        script {
+                            docker.image(env.BACKEND_IMAGE).inside {
+                                sh 'pip-audit --format=json -o pip-audit.json || true'
+                            }
+                        }
+                        archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
+                    }
+                }
+                stage('Trivy') {
+                    steps {
+                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --format json -o trivy.json ${env.BACKEND_IMAGE} || true"
+                        archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
         stage('Git Tag & Push') {
             when { branch 'main' }
             steps {

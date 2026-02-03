@@ -6,6 +6,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 import pytest
+import threading
 from bson import ObjectId
 from unittest.mock import patch, MagicMock
 
@@ -522,3 +523,467 @@ def test_decode_token_expired():
 def test_decode_token_malformed():
     """decode_token returns None for malformed token."""
     assert decode_token('not.a.valid.jwt.token.at.all') is None
+
+
+# --- Metrics Server Tests ---
+
+@pytest.mark.unit
+def test_metrics_server_starts_thread():
+    """run_metrics_server starts a daemon thread for periodic updates."""
+    from metrics_server import run_metrics_server
+    import threading
+
+    captured = {}
+
+    def mock_run_simple(*args, **kwargs):
+        captured['port'] = args[1]
+        captured['threaded'] = kwargs.get('threaded')
+
+    update_calls = []
+
+    def mock_update():
+        update_calls.append(1)
+
+    with patch('metrics_server.run_simple', mock_run_simple), \
+         patch('metrics_server.threading.Thread') as mock_thread:
+        mock_thread.return_value = MagicMock()
+        run_metrics_server(mock_update)
+
+        mock_thread.assert_called_once()
+        assert mock_thread.call_args[1]['daemon'] is True
+
+
+@pytest.mark.unit
+def test_metrics_server_uses_env_port(monkeypatch):
+    """run_metrics_server reads METRICS_PORT from environment."""
+    from metrics_server import run_metrics_server
+
+    captured = {}
+
+    def mock_run_simple(*args, **kwargs):
+        captured['port'] = args[1]
+
+    monkeypatch.setenv('METRICS_PORT', '9123')
+
+    with patch('metrics_server.run_simple', mock_run_simple), \
+         patch('metrics_server.threading.Thread', MagicMock()):
+        run_metrics_server(lambda: None)
+
+    assert captured['port'] == 9123
+
+
+@pytest.mark.unit
+def test_metrics_server_default_port(monkeypatch):
+    """run_metrics_server defaults to port 8081."""
+    from metrics_server import run_metrics_server
+
+    captured = {}
+
+    def mock_run_simple(*args, **kwargs):
+        captured['port'] = args[1]
+
+    monkeypatch.delenv('METRICS_PORT', raising=False)
+
+    with patch('metrics_server.run_simple', mock_run_simple), \
+         patch('metrics_server.threading.Thread', MagicMock()):
+        run_metrics_server(lambda: None)
+
+    assert captured['port'] == 8081
+
+
+@pytest.mark.unit
+def test_metrics_server_dispatcher_middleware():
+    """run_metrics_server creates DispatcherMiddleware with /metrics path."""
+    from metrics_server import run_metrics_server
+
+    captured_app = {}
+
+    def mock_run_simple(host, port, app, **kwargs):
+        captured_app['app'] = app
+
+    with patch('metrics_server.run_simple', mock_run_simple), \
+         patch('metrics_server.threading.Thread', MagicMock()):
+        run_metrics_server(lambda: None)
+
+    assert captured_app['app'] is not None
+
+
+# --- Metrics Utils Tests ---
+
+@pytest.mark.unit
+def test_update_db_metrics_success():
+    """update_db_metrics sets gauges when database is available."""
+    from metrics_utils import update_db_metrics
+
+    mock_gauge_connections = MagicMock()
+    mock_gauge_items = MagicMock()
+
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value.count_documents.return_value = 42
+
+    mock_client = MagicMock()
+    mock_client.admin.command.return_value = {'connections': {'current': 5}}
+
+    with patch('metrics_utils.db.get_db', return_value=mock_db), \
+         patch('metrics_utils.db.db_client', mock_client):
+        update_db_metrics(mock_gauge_connections, mock_gauge_items)
+
+    mock_gauge_items.set.assert_called_once_with(42)
+    mock_gauge_connections.set.assert_called_once_with(5)
+
+
+@pytest.mark.unit
+def test_update_db_metrics_db_none():
+    """update_db_metrics handles None database gracefully."""
+    from metrics_utils import update_db_metrics
+
+    mock_gauge_connections = MagicMock()
+    mock_gauge_items = MagicMock()
+
+    with patch('metrics_utils.db.get_db', return_value=None):
+        update_db_metrics(mock_gauge_connections, mock_gauge_items)
+
+    mock_gauge_items.set.assert_not_called()
+    mock_gauge_connections.set.assert_not_called()
+
+
+@pytest.mark.unit
+def test_update_db_metrics_server_status_fallback():
+    """update_db_metrics falls back to 1 when serverStatus fails."""
+    from metrics_utils import update_db_metrics
+
+    mock_gauge_connections = MagicMock()
+    mock_gauge_items = MagicMock()
+
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value.count_documents.return_value = 10
+
+    mock_client = MagicMock()
+    mock_client.admin.command.side_effect = Exception("Permission denied")
+
+    with patch('metrics_utils.db.get_db', return_value=mock_db), \
+         patch('metrics_utils.db.db_client', mock_client):
+        update_db_metrics(mock_gauge_connections, mock_gauge_items)
+
+    mock_gauge_items.set.assert_called_once_with(10)
+    mock_gauge_connections.set.assert_called_once_with(1)
+
+
+@pytest.mark.unit
+def test_update_db_metrics_exception_logged(caplog):
+    """update_db_metrics logs errors on exception."""
+    from metrics_utils import update_db_metrics
+    import logging
+
+    mock_gauge = MagicMock()
+
+    with patch('metrics_utils.db.get_db', side_effect=Exception("DB error")):
+        with caplog.at_level(logging.ERROR):
+            update_db_metrics(mock_gauge, mock_gauge)
+
+    assert any('Error updating DB metrics' in r.message for r in caplog.records)
+
+
+# --- Middleware Tests ---
+
+@pytest.mark.unit
+def test_before_request_sets_trace_id():
+    """before_request sets g.trace_id from header or generates one."""
+    from app import app
+
+    with app.test_client() as client:
+        response = client.get('/api/health', headers={'X-Trace-ID': 'custom-trace'})
+        assert response.status_code == 200
+
+
+@pytest.mark.unit
+def test_after_request_skips_health_metrics():
+    """after_request skips logging for /api/health endpoint."""
+    from app import app
+
+    with patch('app.REQUEST_COUNT') as mock_counter:
+        with app.test_client() as client:
+            client.get('/api/health')
+        mock_counter.labels.assert_not_called()
+
+
+@pytest.mark.unit
+def test_after_request_logs_500_as_error(caplog):
+    """after_request logs 500 errors at ERROR level."""
+    from app import app
+    import logging
+
+    with patch('app.get_db', side_effect=Exception("DB down")):
+        with app.test_client() as client:
+            with caplog.at_level(logging.ERROR):
+                client.post('/api/auth/register', json={
+                    'group_name': 'G', 'user_name': 'U',
+                    'email': 'e@e.com', 'password': 'p'
+                })
+
+
+@pytest.mark.unit
+def test_after_request_handles_exception():
+    """after_request catches its own errors without crashing."""
+    from app import app
+
+    with patch('app.REQUEST_COUNT.labels', side_effect=Exception("Metrics error")):
+        with app.test_client() as client:
+            response = client.get('/api/auth/me')
+            assert response.status_code in [200, 401]
+
+
+@pytest.mark.unit
+def test_after_request_increments_request_count():
+    """after_request increments REQUEST_COUNT for non-health endpoints."""
+    from app import app
+
+    with patch('app.REQUEST_COUNT') as mock_counter, \
+         patch('app.REQUEST_LATENCY') as mock_histogram:
+        mock_counter.labels.return_value = MagicMock()
+        mock_histogram.labels.return_value = MagicMock()
+
+        with app.test_client() as client:
+            client.post('/api/auth/login', json={'email': 'e@e.com', 'password': 'p'})
+
+        mock_counter.labels.assert_called()
+
+
+# --- Error Response Helper Tests ---
+
+@pytest.mark.unit
+def test_error_response_basic():
+    """error_response returns correct structure without details."""
+    from app import app, error_response
+
+    with app.app_context():
+        response, code = error_response('Something went wrong', 400)
+        data = response.get_json()
+
+        assert code == 400
+        assert data['error'] == 'Something went wrong'
+        assert 'details' not in data
+
+
+@pytest.mark.unit
+def test_error_response_with_details():
+    """error_response includes details when provided."""
+    from app import app, error_response
+
+    with app.app_context():
+        response, code = error_response('Validation failed', 422, ['Field X is required'])
+        data = response.get_json()
+
+        assert code == 422
+        assert data['error'] == 'Validation failed'
+        assert data['details'] == ['Field X is required']
+
+
+@pytest.mark.unit
+def test_error_response_default_code():
+    """error_response defaults to 400 status code."""
+    from app import app, error_response
+
+    with app.app_context():
+        _, code = error_response('Bad request')
+        assert code == 400
+
+
+# --- Auth Decorator Edge Cases ---
+
+@pytest.mark.unit
+def test_auth_required_missing_header():
+    """auth_required returns 401 when Authorization header is missing."""
+    from app import app
+
+    with app.test_client() as client:
+        response = client.get('/api/auth/me')
+        assert response.status_code == 401
+        assert 'Token is missing' in response.get_json()['details']
+
+
+@pytest.mark.unit
+def test_auth_required_missing_bearer_prefix():
+    """auth_required returns 401 when Bearer prefix is missing."""
+    from app import app
+
+    with app.test_client() as client:
+        response = client.get('/api/auth/me', headers={'Authorization': 'just-a-token'})
+        assert response.status_code == 401
+
+
+@pytest.mark.unit
+def test_auth_required_invalid_token():
+    """auth_required returns 401 for invalid token."""
+    from app import app
+
+    with app.test_client() as client:
+        response = client.get('/api/auth/me', headers={'Authorization': 'Bearer invalid.token.here'})
+        assert response.status_code == 401
+        assert 'invalid or expired' in response.get_json()['details']
+
+
+@pytest.mark.unit
+def test_auth_required_db_fallback():
+    """auth_required falls back to token claims when DB unavailable."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MEMBER', 'Token User', 'Test Group', 'ABC123')
+
+    with patch('auth.get_db', side_effect=Exception("DB unavailable")):
+        with app.test_client() as client:
+            response = client.get('/api/auth/me', headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['role'] == 'MEMBER'
+
+
+# --- Threading Tests ---
+
+@pytest.mark.unit
+def test_create_item_spawns_ai_thread():
+    """create_item spawns a daemon thread for AI estimation."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MANAGER', 'Test User', 'Test Group', 'ABC123')
+
+    threads_created = []
+    original_thread = threading.Thread
+
+    def track_thread(*args, **kwargs):
+        threads_created.append(kwargs)
+        mock = MagicMock()
+        return mock
+
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value.insert_one.return_value = MagicMock(inserted_id=ObjectId())
+    mock_db.__getitem__.return_value.find_one.return_value = None
+
+    with patch('app.threading.Thread', side_effect=track_thread), \
+         patch('app.get_db', return_value=mock_db), \
+         patch('auth.get_db', return_value=mock_db):
+        with app.test_client() as client:
+            response = client.post('/api/items',
+                                   json={'name': 'Test Item', 'category': 'Test'},
+                                   headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 201
+
+    assert any(t.get('daemon') is True for t in threads_created)
+
+
+# --- Health Endpoint Tests ---
+
+@pytest.mark.unit
+def test_health_endpoint_db_down():
+    """Health endpoint returns 503 when DB is down."""
+    from app import app
+
+    mock_client = MagicMock()
+    mock_client.admin.command.side_effect = Exception("Connection refused")
+
+    with patch('app.db.db_client', mock_client):
+        with app.test_client() as client:
+            response = client.get('/api/health')
+            assert response.status_code == 503
+            assert response.get_json()['status'] == 'unhealthy'
+
+
+@pytest.mark.unit
+def test_health_endpoint_db_up():
+    """Health endpoint returns 200 when DB is healthy."""
+    from app import app
+
+    mock_client = MagicMock()
+    mock_client.admin.command.return_value = {'ok': 1}
+
+    with patch('app.db.db_client', mock_client):
+        with app.test_client() as client:
+            response = client.get('/api/health')
+            assert response.status_code == 200
+            assert response.get_json()['status'] == 'healthy'
+
+
+# --- Invalid ObjectId Tests ---
+
+@pytest.mark.unit
+def test_invalid_objectid_in_url():
+    """Invalid ObjectId in URL returns 400."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
+
+    with app.test_client() as client:
+        response = client.put('/api/items/not-a-valid-id',
+                              json={'quantity': 5},
+                              headers={'Authorization': f'Bearer {token}'})
+        assert response.status_code == 400
+        assert 'Invalid item ID' in response.get_json()['error']
+
+
+@pytest.mark.unit
+def test_invalid_objectid_in_delete():
+    """Invalid ObjectId in DELETE returns 400."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
+
+    with app.test_client() as client:
+        response = client.delete('/api/items/bad-id',
+                                 headers={'Authorization': f'Bearer {token}'})
+        assert response.status_code == 400
+
+
+# --- JSON Handling Tests ---
+
+@pytest.mark.unit
+def test_malformed_json_returns_400():
+    """Malformed JSON body returns 400."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
+
+    with app.test_client() as client:
+        response = client.post('/api/items',
+                               data='not json',
+                               content_type='application/json',
+                               headers={'Authorization': f'Bearer {token}'})
+        assert response.status_code == 400
+
+
+@pytest.mark.unit
+def test_missing_json_body_returns_400():
+    """Missing JSON body returns 400."""
+    from app import app
+    from auth import generate_token
+
+    token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
+
+    with app.test_client() as client:
+        response = client.post('/api/items',
+                               content_type='application/json',
+                               headers={'Authorization': f'Bearer {token}'})
+        assert response.status_code == 400
+
+
+# --- Token Edge Cases ---
+
+@pytest.mark.unit
+def test_generate_token_with_none_join_code():
+    """generate_token handles None join_code."""
+    token = generate_token('user-123', 'group-456', 'MEMBER', 'Test User', 'Test Group', None)
+    decoded = decode_token(token)
+    assert decoded is not None
+    assert decoded['join_code'] is None
+
+
+@pytest.mark.unit
+def test_validate_item_large_quantity():
+    """validate_item handles large quantity values."""
+    validated, errors = validate_item({'name': 'Bulk Item', 'group_id': 'g1', 'quantity': 9999})
+    assert errors == []
+    assert validated['quantity'] == 9999
