@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import threading
+import uuid
 from typing import Tuple, Any, Dict
 
 from flask import Flask, jsonify, request, Response, g
@@ -23,14 +24,33 @@ load_dotenv()
 
 # --- Configuration & Logging ---
 
+class ContextualJsonFormatter(jsonlogger.JsonFormatter):
+    """JSON formatter that adds request context to all logs."""
+    def add_fields(self, log_record, record, message_dict):
+        super().add_fields(log_record, record, message_dict)
+        log_record['service'] = 'smartcart-backend'
+        log_record['level'] = record.levelname
+        if hasattr(g, 'trace_id'):
+            log_record['trace_id'] = g.trace_id
+        if hasattr(g, 'user_id'):
+            log_record['user_id'] = g.user_id
+
 def setup_logging() -> logging.Logger:
     """Configures JSON logging for the application."""
+    # Suppress Werkzeug's default access logs
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
     handler = logging.StreamHandler(sys.stdout)
-    formatter = jsonlogger.JsonFormatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+    formatter = ContextualJsonFormatter(
+        '%(asctime)s %(levelname)s %(name)s %(message)s',
+        timestamp=True
+    )
     handler.setFormatter(formatter)
-    logger = logging.getLogger(__name__)
+
+    logger = logging.getLogger('smartcart')
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
+    logger.propagate = False
     return logger
 
 logger = setup_logging()
@@ -62,21 +82,44 @@ threading.Thread(target=run_metrics_server, args=(update_db_metrics,), daemon=Tr
 @app.before_request
 def before_request():
     request.start_time = time.time()
+    g.trace_id = request.headers.get('X-Trace-ID', str(uuid.uuid4())[:8])
 
 @app.after_request
 def after_request(response):
     try:
-        if request.endpoint == 'metrics':
+        # Skip logging for health checks and metrics
+        if request.path in ['/api/health', '/metrics']:
             return response
 
+        duration_ms = 0
         if hasattr(request, 'start_time'):
-            latency = time.time() - request.start_time
+            duration_ms = round((time.time() - request.start_time) * 1000, 2)
             endpoint = request.endpoint if request.endpoint else 'unknown'
             method = request.method
             status = str(response.status_code)
 
             REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status).inc()
-            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(latency)
+            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration_ms / 1000)
+
+        # Structured request log
+        log_data = {
+            'event': 'request_completed',
+            'method': request.method,
+            'path': request.path,
+            'status_code': response.status_code,
+            'duration_ms': duration_ms,
+            'remote_addr': request.remote_addr,
+        }
+        if hasattr(g, 'user_id'):
+            log_data['user_id'] = g.user_id
+
+        if response.status_code >= 500:
+            logger.error("Request failed", extra=log_data)
+        elif response.status_code >= 400:
+            logger.warning("Request error", extra=log_data)
+        else:
+            logger.info("Request completed", extra=log_data)
+
     except Exception as e:
         logger.error(f"Error in after_request middleware: {e}")
 
