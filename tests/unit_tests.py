@@ -713,7 +713,7 @@ def test_after_request_logs_500_as_error(caplog):
     from app import app
     import logging
 
-    with patch('app.get_db', side_effect=Exception("DB down")):
+    with patch('auth.get_db', side_effect=Exception("DB down")):
         with app.test_client() as client:
             with caplog.at_level(logging.ERROR):
                 client.post('/api/auth/register', json={
@@ -739,7 +739,8 @@ def test_after_request_increments_request_count():
     from app import app
 
     with patch('app.REQUEST_COUNT') as mock_counter, \
-         patch('app.REQUEST_LATENCY') as mock_histogram:
+         patch('app.REQUEST_LATENCY') as mock_histogram, \
+         patch('app.login_user', return_value=(None, ['fail'])):
         mock_counter.labels.return_value = MagicMock()
         mock_histogram.labels.return_value = MagicMock()
 
@@ -915,12 +916,13 @@ def test_invalid_objectid_in_url():
 
     token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
 
-    with app.test_client() as client:
-        response = client.put('/api/items/not-a-valid-id',
-                              json={'quantity': 5},
-                              headers={'Authorization': f'Bearer {token}'})
-        assert response.status_code == 400
-        assert 'Invalid item ID' in response.get_json()['error']
+    with patch('auth.get_db', side_effect=Exception("skip")):
+        with app.test_client() as client:
+            response = client.put('/api/items/not-a-valid-id',
+                                  json={'quantity': 5},
+                                  headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 400
+            assert 'Invalid item ID' in response.get_json()['error']
 
 
 @pytest.mark.unit
@@ -931,10 +933,11 @@ def test_invalid_objectid_in_delete():
 
     token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
 
-    with app.test_client() as client:
-        response = client.delete('/api/items/bad-id',
-                                 headers={'Authorization': f'Bearer {token}'})
-        assert response.status_code == 400
+    with patch('auth.get_db', side_effect=Exception("skip")):
+        with app.test_client() as client:
+            response = client.delete('/api/items/bad-id',
+                                     headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 400
 
 
 # --- JSON Handling Tests ---
@@ -947,12 +950,13 @@ def test_malformed_json_returns_400():
 
     token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
 
-    with app.test_client() as client:
-        response = client.post('/api/items',
-                               data='not json',
-                               content_type='application/json',
-                               headers={'Authorization': f'Bearer {token}'})
-        assert response.status_code == 400
+    with patch('auth.get_db', side_effect=Exception("skip")):
+        with app.test_client() as client:
+            response = client.post('/api/items',
+                                   data='not json',
+                                   content_type='application/json',
+                                   headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 400
 
 
 @pytest.mark.unit
@@ -963,11 +967,12 @@ def test_missing_json_body_returns_400():
 
     token = generate_token('user-123', 'group-456', 'MANAGER', 'Test', 'Group', 'ABC')
 
-    with app.test_client() as client:
-        response = client.post('/api/items',
-                               content_type='application/json',
-                               headers={'Authorization': f'Bearer {token}'})
-        assert response.status_code == 400
+    with patch('auth.get_db', side_effect=Exception("skip")):
+        with app.test_client() as client:
+            response = client.post('/api/items',
+                                   content_type='application/json',
+                                   headers={'Authorization': f'Bearer {token}'})
+            assert response.status_code == 400
 
 
 # --- Token Edge Cases ---
