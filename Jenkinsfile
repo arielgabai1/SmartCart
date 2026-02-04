@@ -83,6 +83,19 @@ pipeline {
             }
         }
 
+        stage('SonarCloud Analysis') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            steps {
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    script {
+                        docker.image('sonarsource/sonar-scanner-cli:latest').inside {
+                            sh 'sonar-scanner'
+                        }
+                    }
+                }
+            }
+        }
+
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
@@ -103,19 +116,6 @@ pipeline {
                 script {
                     docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
-                    }
-                }
-            }
-        }
-
-        stage('SonarCloud Analysis') {
-            when { anyOf { branch 'main'; branch 'feature/*' } }
-            steps {
-                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
-                    script {
-                        docker.image('sonarsource/sonar-scanner-cli:latest').inside {
-                            sh 'sonar-scanner'
-                        }
                     }
                 }
             }

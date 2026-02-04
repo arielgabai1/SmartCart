@@ -43,18 +43,7 @@ def _validate_string(value: Any, max_len: Optional[int] = None) -> Optional[str]
 
 # --- Item Validation ---
 
-def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
-    """Validate and prepare item data for insertion."""
-    errors = []
-    validated = {}
-
-    # Required: group_id
-    if not data.get('group_id'):
-        errors.append('group_id is required for multi-tenancy')
-    else:
-        validated['group_id'] = str(data['group_id'])
-
-    # Required: name
+def _validate_item_name(data, errors, validated):
     if 'name' not in data:
         errors.append('name is required')
     elif not data['name'] or not str(data['name']).strip():
@@ -64,26 +53,20 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     else:
         validated['name'] = str(data['name']).strip()
 
-    # Optional Fields with Defaults
-    validated['category'] = _validate_string(data.get('category')) or 'OTHER'
-    validated['submitted_by'] = _validate_string(data.get('submitted_by')) or 'Anonymous'
-    validated['submitted_by_name'] = _validate_string(data.get('submitted_by_name')) or 'Group Member'
-
-    # Enum Validations
+def _validate_item_enums(data, errors, validated):
     if 'user_role' in data:
         if data['user_role'] not in VALID_USER_ROLES:
             errors.append(f'user_role must be one of: {", ".join(VALID_USER_ROLES)}')
         else:
             validated['user_role'] = data['user_role']
 
-    # Status
     status = data.get('status', DEFAULT_STATUS)
     if status not in VALID_STATUSES:
         errors.append(f'status must be one of: {", ".join(VALID_STATUSES)}')
     else:
         validated['status'] = status
 
-    # Numeric Fields
+def _validate_item_numerics(data, errors, validated):
     try:
         validated['price_nis'] = float(data.get('price_nis', DEFAULT_PRICE_NIS))
     except (ValueError, TypeError):
@@ -98,10 +81,10 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     except (ValueError, TypeError):
         errors.append('quantity must be a valid integer')
 
-    # AI Fields
+def _validate_item_ai_fields(data, errors, validated):
     if 'ai_status' in data:
         if data['ai_status'] not in VALID_AI_STATUSES:
-             errors.append(f'ai_status must be one of: {", ".join(VALID_AI_STATUSES)}')
+            errors.append(f'ai_status must be one of: {", ".join(VALID_AI_STATUSES)}')
         else:
             validated['ai_status'] = data['ai_status']
 
@@ -112,6 +95,26 @@ def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
             errors.append('ai_latency must be a valid number')
     else:
         validated['ai_latency'] = None
+
+def validate_item(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    """Validate and prepare item data for insertion."""
+    errors = []
+    validated = {}
+
+    if not data.get('group_id'):
+        errors.append('group_id is required for multi-tenancy')
+    else:
+        validated['group_id'] = str(data['group_id'])
+
+    _validate_item_name(data, errors, validated)
+
+    validated['category'] = _validate_string(data.get('category')) or 'OTHER'
+    validated['submitted_by'] = _validate_string(data.get('submitted_by')) or 'Anonymous'
+    validated['submitted_by_name'] = _validate_string(data.get('submitted_by_name')) or 'Group Member'
+
+    _validate_item_enums(data, errors, validated)
+    _validate_item_numerics(data, errors, validated)
+    _validate_item_ai_fields(data, errors, validated)
 
     validated['created_at'] = data.get('created_at', datetime.now(timezone.utc))
 

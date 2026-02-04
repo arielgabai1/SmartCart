@@ -284,6 +284,33 @@ def create_item() -> Tuple[Response, int]:
         logger.error(f"Error creating item: {e}")
         return error_response('Internal error', 500)
 
+def _apply_status_update(data, update_fields):
+    if 'status' not in data:
+        return None
+    if g.role != 'MANAGER':
+        return error_response('Only Managers can approve/reject items', 403)
+    update_fields['status'] = data['status']
+    if data['status'] == 'REJECTED':
+        update_fields['rejected_by'] = g.user_id
+        update_fields['rejected_by_name'] = g.user_name
+    return None
+
+def _apply_quantity_update(data, item, update_fields):
+    if 'quantity' not in data:
+        return None
+    try:
+        if g.role != 'MANAGER':
+            is_owner = str(item.get('submitted_by')) == g.user_id
+            if not (is_owner and item.get('status') == 'PENDING'):
+                return error_response('You can only update quantity on your own pending items', 403)
+        qty = int(data['quantity'])
+        if qty < 1:
+            return error_response('Quantity must be at least 1', 400)
+        update_fields['quantity'] = qty
+    except (ValueError, TypeError):
+        return error_response('Invalid quantity', 400)
+    return None
+
 @app.route('/api/items/<item_id>', methods=['PUT'])
 @auth_required
 def update_item(item_id: str) -> Tuple[Response, int]:
@@ -297,44 +324,19 @@ def update_item(item_id: str) -> Tuple[Response, int]:
         data = request.get_json()
         database = get_db()
 
-        # Check existence and ownership (group)
         item = database['items'].find_one({'_id': obj_id, 'group_id': g.group_id})
         if not item:
             return error_response('Item not found', 404)
 
         update_fields = {}
-        
-        # Status Update (Manager Only)
-        if 'status' in data:
-            if g.role != 'MANAGER':
-                return error_response('Only Managers can approve/reject items', 403)
-            
-            new_status = data['status']
-            update_fields['status'] = new_status
-            
-            # Track rejection author
-            if new_status == 'REJECTED':
-                update_fields['rejected_by'] = g.user_id
-                update_fields['rejected_by_name'] = g.user_name
 
-        # Quantity Update
-        if 'quantity' in data:
-            try:
-                # Permission check: Members can only edit their own PENDING items
-                # Managers can edit any item
-                if g.role != 'MANAGER':
-                    is_owner = str(item.get('submitted_by')) == g.user_id
-                    is_pending = item.get('status') == 'PENDING'
-                    
-                    if not (is_owner and is_pending):
-                         return error_response('You can only update quantity on your own pending items', 403)
+        error = _apply_status_update(data, update_fields)
+        if error:
+            return error
 
-                qty = int(data['quantity'])
-                if qty < 1:
-                    return error_response('Quantity must be at least 1', 400)
-                update_fields['quantity'] = qty
-            except (ValueError, TypeError):
-                return error_response('Invalid quantity', 400)
+        error = _apply_quantity_update(data, item, update_fields)
+        if error:
+            return error
 
         if not update_fields:
             return error_response('No fields to update', 400)
@@ -342,7 +344,7 @@ def update_item(item_id: str) -> Tuple[Response, int]:
         database['items'].update_one({'_id': obj_id}, {'$set': update_fields})
         return jsonify({'message': 'Updated successfully'}), 200
     except Exception as e:
-        logger.error(f"Error updating item {item_id}: {e}")
+        logger.error("Error updating item", extra={'item_id': item_id, 'error': str(e)})
         return error_response(str(e), 500)
 
 @app.route('/api/items/<item_id>', methods=['DELETE'])
@@ -369,9 +371,9 @@ def delete_item(item_id: str) -> Tuple[Response, int]:
         if result.deleted_count == 0:
             return error_response('Item not found or already deleted', 404)
             
-        return Response(status=204)
+        return Response(status=204), 204
     except Exception as e:
-        logger.error(f"Error deleting item {item_id}: {e}")
+        logger.error("Error deleting item", extra={'item_id': item_id, 'error': str(e)})
         return error_response('Internal error', 500)
 
 @app.route('/api/items/clear', methods=['DELETE'])
@@ -384,7 +386,7 @@ def delete_all_items() -> Tuple[Response, int]:
 
         database = get_db()
         database['items'].delete_many({'group_id': g.group_id})
-        return Response(status=204)
+        return Response(status=204), 204
     except Exception as e:
         logger.error(f"Error clearing items: {e}")
         return error_response(str(e), 500)
@@ -437,7 +439,7 @@ def manage_group_member(user_id: str) -> Tuple[Response, int]:
 
         if request.method == 'DELETE':
             database['users'].delete_one({'_id': target_obj_id})
-            return Response(status=204)
+            return Response(status=204), 204
         
         elif request.method == 'PUT':
             data = request.get_json()
@@ -449,7 +451,7 @@ def manage_group_member(user_id: str) -> Tuple[Response, int]:
             return jsonify({'message': f'User role updated to {new_role}'}), 200
             
     except Exception as e:
-        logger.error(f"Error managing member {user_id}: {e}")
+        logger.error("Error managing member", extra={'user_id': user_id, 'error': str(e)})
         return error_response(str(e), 500)
 
 # --- Server Start ---
