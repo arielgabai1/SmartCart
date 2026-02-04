@@ -8,7 +8,7 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10')) // Keep last 10 builds
-        timeout(time: 5, unit: 'MINUTES') // Fail if exceeds 5 min
+        timeout(time: 10, unit: 'MINUTES') // Fail if exceeds 5 min
         disableConcurrentBuilds() // Prevent parallel builds
         timestamps() // Add timestamps to console output
     }
