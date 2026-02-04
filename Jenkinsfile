@@ -111,7 +111,7 @@ pipeline {
             steps {
                 script {
                     docker.image('mcr.microsoft.com/playwright/python:v1.49.0-noble').inside('--network smartcart_frontend-net') {
-                        sh 'pip install pytest && TEST_BASE_URL=http://frontend pytest tests/e2e_tests.py -v --no-cov --tb=short -x'
+                        sh 'pip install pytest && TEST_BASE_URL=http://frontend python -m pytest tests/e2e_tests.py -v --tb=short -x'
                     }
                 }
             }
