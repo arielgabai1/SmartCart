@@ -110,8 +110,8 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image('mcr.microsoft.com/playwright/python:v1.49.0-noble').inside('--network smartcart_frontend-net') {
-                        sh 'pip install pytest pytest-cov && TEST_BASE_URL=http://frontend python -m pytest tests/e2e_tests.py -v --tb=short -x'
+                    docker.image('mcr.microsoft.com/playwright/python:v1.58.0-noble').inside('--network smartcart_frontend-net') {
+                        sh 'pip install pytest pytest-cov playwright && TEST_BASE_URL=http://frontend python -m pytest tests/e2e_tests.py -v --tb=short -x'
                     }
                 }
             }
