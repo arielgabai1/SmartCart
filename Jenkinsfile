@@ -57,7 +57,7 @@ pipeline {
                     steps {
                         script {
                             docker.image(env.BACKEND_IMAGE).inside {
-                                sh 'pip-audit --cache-dir /tmp --format=json -o pip-audit.json'
+                                sh 'pip-audit --format=json -o pip-audit.json'
                             }
                         }
                         archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
