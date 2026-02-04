@@ -5,7 +5,8 @@ RUN groupadd -r smartcartgroup && useradd -r -g smartcartgroup smartcart_user
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
+RUN pip install --no-cache-dir --upgrade pip==26.0 && \
+    pip install --no-cache-dir -r requirements.txt && \
     apt-get update && \
     apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/*
