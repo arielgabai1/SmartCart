@@ -1,15 +1,13 @@
-FROM python:3.14.2-slim
+FROM python:3.14.2-alpine
 
-RUN groupadd -r smartcartgroup && useradd -r -g smartcartgroup smartcart_user
+RUN addgroup -S smartcartgroup && adduser -S smartcart_user -G smartcartgroup
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip==26.0 && \
     pip install --no-cache-dir -r requirements.txt && \
-    apt-get update && \
-    apt-get install -y curl && \
-    rm -rf /var/lib/apt/lists/*
+    apk add --no-cache curl
 
 COPY --chown=smartcart_user:smartcartgroup src/ ./src/
 COPY --chown=smartcart_user:smartcartgroup tests/ ./tests/
