@@ -540,3 +540,237 @@ def test_delete_member_forbidden_for_member(registered_group, member_in_group):
         headers=member_headers
     )
     assert response.status_code == 403
+
+
+# --- Cross-Role Workflow Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p0
+def test_member_submit_manager_approve(registered_group, member_in_group):
+    """Member submits item (PENDING), manager approves it."""
+    manager_headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    # Member creates item - should be PENDING
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=member_headers,
+        json={'name': 'Member Item'}
+    )
+    assert create_resp.status_code == 201
+    item = create_resp.json()
+    assert item['status'] == 'PENDING'
+
+    # Manager approves
+    approve_resp = requests.put(
+        f"{BASE_URL}/items/{item['_id']}", headers=manager_headers,
+        json={'status': 'APPROVED'}
+    )
+    assert approve_resp.status_code == 200
+
+    # Verify status changed
+    items = requests.get(f"{BASE_URL}/items", headers=member_headers).json()
+    approved = [i for i in items if i['_id'] == item['_id']]
+    assert len(approved) == 1
+    assert approved[0]['status'] == 'APPROVED'
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_member_submit_manager_reject(registered_group, member_in_group):
+    """Member submits item, manager rejects it."""
+    manager_headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=member_headers,
+        json={'name': 'Rejected Item'}
+    )
+    item_id = create_resp.json()['_id']
+
+    reject_resp = requests.put(
+        f"{BASE_URL}/items/{item_id}", headers=manager_headers,
+        json={'status': 'REJECTED'}
+    )
+    assert reject_resp.status_code == 200
+
+    items = requests.get(f"{BASE_URL}/items", headers=member_headers).json()
+    rejected = [i for i in items if i['_id'] == item_id]
+    assert rejected[0]['status'] == 'REJECTED'
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_promote_member_can_approve(registered_group, member_in_group):
+    """Promoted member gains manager capabilities."""
+    manager_headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    # Promote member
+    requests.put(
+        f"{BASE_URL}/groups/members/{member_in_group['user_id']}",
+        headers=manager_headers, json={'role': 'MANAGER'}
+    )
+
+    # Original manager creates a pending-style item, promoted member approves
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=manager_headers,
+        json={'name': 'Test Promote'}
+    )
+    item_id = create_resp.json()['_id']
+
+    # Promoted member can now update status
+    approve_resp = requests.put(
+        f"{BASE_URL}/items/{item_id}", headers=member_headers,
+        json={'status': 'APPROVED'}
+    )
+    assert approve_resp.status_code == 200
+
+
+# --- Permission Edge Cases ---
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_member_cannot_delete_others_item(registered_group, member_in_group):
+    """Member cannot delete an item created by another user."""
+    manager_headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    # Manager creates item
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=manager_headers,
+        json={'name': 'Manager Item'}
+    )
+    item_id = create_resp.json()['_id']
+
+    # Member tries to delete it
+    delete_resp = requests.delete(
+        f"{BASE_URL}/items/{item_id}", headers=member_headers
+    )
+    assert delete_resp.status_code == 403
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_member_views_group_members(member_in_group):
+    """Member (not manager) can view group members."""
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+    response = requests.get(f"{BASE_URL}/groups/members", headers=member_headers)
+    assert response.status_code == 200
+    assert len(response.json()) >= 2
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_member_updates_own_pending_quantity(member_in_group):
+    """Member can update quantity on their own PENDING item."""
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=member_headers,
+        json={'name': 'My Item'}
+    )
+    item_id = create_resp.json()['_id']
+    assert create_resp.json()['status'] == 'PENDING'
+
+    update_resp = requests.put(
+        f"{BASE_URL}/items/{item_id}", headers=member_headers,
+        json={'quantity': 5}
+    )
+    assert update_resp.status_code == 200
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_member_cannot_update_others_quantity(registered_group, member_in_group):
+    """Member cannot update quantity on another user's item."""
+    manager_headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    member_headers = {'Authorization': f"Bearer {member_in_group['token']}"}
+
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=manager_headers,
+        json={'name': 'Manager Owned'}
+    )
+    item_id = create_resp.json()['_id']
+
+    update_resp = requests.put(
+        f"{BASE_URL}/items/{item_id}", headers=member_headers,
+        json={'quantity': 10}
+    )
+    assert update_resp.status_code == 403
+
+
+# --- Error Handling Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_login_nonexistent_user():
+    """Login with non-existent email returns 401."""
+    response = requests.post(f"{BASE_URL}/auth/login", json={
+        'email': 'nobody@example.com',
+        'password': 'password'
+    })
+    assert response.status_code == 401
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_join_duplicate_email(registered_group):
+    """Joining with an already-registered email returns 400."""
+    response = requests.post(f"{BASE_URL}/auth/join", json={
+        'join_code': registered_group['join_code'],
+        'user_name': 'Duplicate',
+        'email': registered_group['email'],
+        'password': 'pass'
+    })
+    assert response.status_code == 400
+    assert 'email already exists' in response.json()['details'][0].lower()
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_invalid_item_id_format(registered_group):
+    """Non-ObjectId item ID returns 400."""
+    headers = {'Authorization': f"Bearer {registered_group['token']}"}
+
+    put_resp = requests.put(
+        f"{BASE_URL}/items/not-valid-id", headers=headers,
+        json={'status': 'APPROVED'}
+    )
+    assert put_resp.status_code == 400
+
+    del_resp = requests.delete(f"{BASE_URL}/items/not-valid-id", headers=headers)
+    assert del_resp.status_code == 400
+
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_update_invalid_quantity(registered_group):
+    """Invalid quantity values return 400."""
+    headers = {'Authorization': f"Bearer {registered_group['token']}"}
+
+    create_resp = requests.post(
+        f"{BASE_URL}/items", headers=headers,
+        json={'name': 'Qty Test'}
+    )
+    item_id = create_resp.json()['_id']
+
+    # Zero quantity
+    resp = requests.put(
+        f"{BASE_URL}/items/{item_id}", headers=headers,
+        json={'quantity': 0}
+    )
+    assert resp.status_code == 400
+
+
+# --- Self-Management Tests ---
+
+@pytest.mark.integration
+@pytest.mark.p1
+def test_manager_cannot_remove_self(registered_group):
+    """Manager cannot remove themselves from the group."""
+    headers = {'Authorization': f"Bearer {registered_group['token']}"}
+    response = requests.delete(
+        f"{BASE_URL}/groups/members/{registered_group['user_id']}",
+        headers=headers
+    )
+    assert response.status_code == 400
