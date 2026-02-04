@@ -2,15 +2,17 @@ pipeline {
     agent any
 
     environment {
-        ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
-        FRONTEND_ECR_URL = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart-frontend'
+        ECR_URL    = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
+        S3_BUCKET  = 'smartcart-frontend'
+        AWS_REGION = 'ap-south-1'
+        DOMAIN     = 'smartcart.arielgabai.com'
     }
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10')) // Keep last 10 builds
-        timeout(time: 10, unit: 'MINUTES') // Fail if exceeds 5 min
-        disableConcurrentBuilds() // Prevent parallel builds
-        timestamps() // Add timestamps to console output
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 10, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        timestamps()
     }
 
     stages {
@@ -29,7 +31,7 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Backend Image') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
@@ -99,11 +101,7 @@ pipeline {
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
-                script {
-                    env.FRONTEND_IMAGE = "${FRONTEND_ECR_URL}:latest"
-                }
-                sh "FRONTEND_IMAGE=${env.FRONTEND_IMAGE} BACKEND_IMAGE=${BACKEND_IMAGE} docker compose up -d"
+                sh "BACKEND_IMAGE=${env.BACKEND_IMAGE} docker compose up -d --build"
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
@@ -135,7 +133,7 @@ pipeline {
         stage('Tag & Publish') {
             when { branch 'main' }
             parallel {
-                stage('Git Tag & Push') {
+                stage('Git Tag') {
                     steps {
                         withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
                             sh "git tag ${env.VERSION}"
@@ -156,35 +154,52 @@ pipeline {
             }
         }
 
-        stage('Deploy to GitOps') {
+        stage('Deploy') {
             when { branch 'main' }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                    sh """
-                        git clone https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git
-                        cd smartcart-gitops
-                        sed -i '/repository: 043187663485.dkr.ecr.ap-south-1.amazonaws.com\\/smartcart\$/{ n; s/tag: ".*"/tag: "${env.VERSION}"/; }' smartcart/values.yaml
-                        git config user.email "jenkins@ariel.com"
-                        git config user.name "Ariel's Jenkins Bot"
-                        git add smartcart/values.yaml
-                        git commit -m "update backend image to ${env.VERSION}"
-                        git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git main
-                    """
+            parallel {
+                stage('Deploy to GitOps') {
+                    steps {
+                        withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                            sh """
+                                git clone https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git
+                                cd smartcart-gitops
+                                sed -i '/repository: 043187663485.dkr.ecr.ap-south-1.amazonaws.com\\/smartcart\$/{ n; s/tag: ".*"/tag: "${env.VERSION}"/; }' smartcart/values.yaml
+                                git config user.email "jenkins@ariel.com"
+                                git config user.name "Ariel's Jenkins Bot"
+                                git add smartcart/values.yaml
+                                git commit -m "update backend image to ${env.VERSION}"
+                                git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git main
+                            """
+                        }
+                    }
+                }
+                stage('Deploy Static to S3') {
+                    steps {
+                        sh "aws s3 sync frontend/static/ s3://${S3_BUCKET}/ --delete --region ${AWS_REGION}"
+                        sh """
+                            DIST_ID=\$(aws cloudfront list-distributions \
+                                --query "DistributionList.Items[?contains(Aliases.Items, '${DOMAIN}')].Id" \
+                                --output text)
+                            aws cloudfront create-invalidation --distribution-id \$DIST_ID --paths '/*'
+                        """
+                    }
                 }
             }
         }
+
     }
 
     post {
-        always { // Cleanup
+        always {
             sh 'docker compose down -v --remove-orphans || true'
             sh 'docker system prune -af --volumes || true'
             cleanWs()
-            script { // Slack Notification
+            script {
                 def colors = [SUCCESS: 'good', FAILURE: 'danger', ABORTED: 'warning']
                 def version = env.VERSION ?: 'dev'
                 slackSend(
-                    color: colors[currentBuild.result] ?: 'warning', message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
+                    color: colors[currentBuild.result] ?: 'warning',
+                    message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
                 )
             }
         }
