@@ -987,3 +987,591 @@ def test_validate_item_large_quantity():
     validated, errors = validate_item({'name': 'Bulk Item', 'group_id': 'g1', 'quantity': 9999})
     assert errors == []
     assert validated['quantity'] == 9999
+
+
+# --- Route Handler Tests ---
+
+def _auth_headers(role='MANAGER'):
+    """Generate auth headers with a valid token for protected route tests."""
+    token = generate_token(
+        '507f1f77bcf86cd799439011', 'group-456', role,
+        'Test User', 'Test Group', 'ABC123'
+    )
+    return {'Authorization': f'Bearer {token}'}
+
+
+# Auth Routes
+
+@pytest.mark.unit
+def test_register_route_success():
+    """Register endpoint returns 201 on success."""
+    from app import app
+    auth_data = {'user_id': 'u1', 'group_id': 'g1', 'role': 'MANAGER',
+                 'join_code': 'XYZ', 'token': 'tok'}
+    with patch('app.register_group_and_admin', return_value=(auth_data, [])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/register', json={
+                'group_name': 'G', 'user_name': 'U',
+                'email': 'e@e.com', 'password': 'p'
+            })
+            assert r.status_code == 201
+            assert r.get_json()['details']['join_code'] == 'XYZ'
+
+
+@pytest.mark.unit
+def test_register_route_missing_fields():
+    """Register endpoint returns 400 when fields are missing."""
+    from app import app
+    with app.test_client() as c:
+        r = c.post('/api/auth/register', json={'group_name': 'G'})
+        assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_register_route_errors():
+    """Register endpoint returns 400 on validation errors."""
+    from app import app
+    with patch('app.register_group_and_admin', return_value=(None, ['exists'])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/register', json={
+                'group_name': 'G', 'user_name': 'U',
+                'email': 'e@e.com', 'password': 'p'
+            })
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_join_route_success():
+    """Join endpoint returns 201 on success."""
+    from app import app
+    auth_data = {'user_id': 'u1', 'group_id': 'g1', 'role': 'MEMBER', 'token': 'tok'}
+    with patch('app.register_member_via_code', return_value=(auth_data, [])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/join', json={
+                'join_code': 'ABC', 'user_name': 'U',
+                'email': 'e@e.com', 'password': 'p'
+            })
+            assert r.status_code == 201
+
+
+@pytest.mark.unit
+def test_join_route_missing_fields():
+    """Join endpoint returns 400 when fields are missing."""
+    from app import app
+    with app.test_client() as c:
+        r = c.post('/api/auth/join', json={'join_code': 'ABC'})
+        assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_join_route_errors():
+    """Join endpoint returns 400 on validation errors."""
+    from app import app
+    with patch('app.register_member_via_code', return_value=(None, ['bad code'])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/join', json={
+                'join_code': 'BAD', 'user_name': 'U',
+                'email': 'e@e.com', 'password': 'p'
+            })
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_login_route_success():
+    """Login endpoint returns 200 with token."""
+    from app import app
+    with patch('app.login_user', return_value=('token123', [])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/login', json={
+                'email': 'e@e.com', 'password': 'p'
+            })
+            assert r.status_code == 200
+            assert r.get_json()['token'] == 'token123'
+
+
+@pytest.mark.unit
+def test_login_route_missing_fields():
+    """Login endpoint returns 400 when credentials missing."""
+    from app import app
+    with app.test_client() as c:
+        r = c.post('/api/auth/login', json={'email': 'e@e.com'})
+        assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_login_route_failure():
+    """Login endpoint returns 401 on bad credentials."""
+    from app import app
+    with patch('app.login_user', return_value=(None, ['Bad creds'])):
+        with app.test_client() as c:
+            r = c.post('/api/auth/login', json={
+                'email': 'e@e.com', 'password': 'wrong'
+            })
+            assert r.status_code == 401
+
+
+# Item Routes
+
+@pytest.mark.unit
+def test_get_items_success():
+    """GET /api/items returns items for the group."""
+    from app import app
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find.return_value.sort.return_value.limit.return_value = [
+        {'_id': ObjectId(), 'name': 'Milk', 'group_id': 'g', 'status': 'APPROVED'}
+    ]
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.get('/api/items', headers=_auth_headers())
+            assert r.status_code == 200
+            assert len(r.get_json()) == 1
+
+
+@pytest.mark.unit
+def test_get_items_db_error():
+    """GET /api/items returns 500 on DB error."""
+    from app import app
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', side_effect=Exception("DB down")):
+        with app.test_client() as c:
+            r = c.get('/api/items', headers=_auth_headers())
+            assert r.status_code == 500
+
+
+@pytest.mark.unit
+def test_update_item_status_manager():
+    """Manager can approve an item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other-user'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'status': 'APPROVED'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 200
+
+
+@pytest.mark.unit
+def test_update_item_not_found():
+    """PUT /api/items/<id> returns 404 when item not in group."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = None
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'status': 'APPROVED'},
+                      headers=_auth_headers())
+            assert r.status_code == 404
+
+
+@pytest.mark.unit
+def test_update_item_status_non_manager():
+    """Member cannot approve items."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'status': 'APPROVED'},
+                      headers=_auth_headers('MEMBER'))
+            assert r.status_code == 403
+
+
+@pytest.mark.unit
+def test_update_item_quantity_member_own_pending():
+    """Member can update quantity on their own pending item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': '507f1f77bcf86cd799439011'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'quantity': 3},
+                      headers=_auth_headers('MEMBER'))
+            assert r.status_code == 200
+
+
+@pytest.mark.unit
+def test_update_item_quantity_member_not_owner():
+    """Member cannot update quantity on another user's item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other-user'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'quantity': 3},
+                      headers=_auth_headers('MEMBER'))
+            assert r.status_code == 403
+
+
+@pytest.mark.unit
+def test_update_item_invalid_quantity_zero():
+    """Quantity less than 1 returns 400."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'quantity': 0},
+                      headers=_auth_headers())
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_update_item_invalid_quantity_string():
+    """Non-numeric quantity returns 400."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'quantity': 'abc'},
+                      headers=_auth_headers())
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_update_item_no_fields():
+    """Empty update body returns 400."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={},
+                      headers=_auth_headers())
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_update_item_reject_sets_author():
+    """Rejecting an item sets rejected_by fields."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'status': 'PENDING', 'submitted_by': 'other'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/items/{item_id}',
+                      json={'status': 'REJECTED'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 200
+            update_fields = col.update_one.call_args[0][1]['$set']
+            assert 'rejected_by' in update_fields
+
+
+# Delete Item
+
+@pytest.mark.unit
+def test_delete_item_manager():
+    """Manager can delete any item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456', 'submitted_by': 'other-user'
+    }
+    col.delete_one.return_value = MagicMock(deleted_count=1)
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/items/{item_id}', headers=_auth_headers('MANAGER'))
+            assert r.status_code == 204
+
+
+@pytest.mark.unit
+def test_delete_item_owner():
+    """Owner can delete their own item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'submitted_by': '507f1f77bcf86cd799439011'
+    }
+    col.delete_one.return_value = MagicMock(deleted_count=1)
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/items/{item_id}', headers=_auth_headers('MEMBER'))
+            assert r.status_code == 204
+
+
+@pytest.mark.unit
+def test_delete_item_not_found():
+    """DELETE returns 404 when item not in group."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = None
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/items/{item_id}', headers=_auth_headers())
+            assert r.status_code == 404
+
+
+@pytest.mark.unit
+def test_delete_item_not_owner():
+    """Member cannot delete another user's item."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456', 'submitted_by': 'other-user'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/items/{item_id}', headers=_auth_headers('MEMBER'))
+            assert r.status_code == 403
+
+
+@pytest.mark.unit
+def test_delete_item_already_deleted():
+    """DELETE returns 404 when item was deleted between find and delete."""
+    from app import app
+    item_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': item_id, 'group_id': 'group-456',
+        'submitted_by': '507f1f77bcf86cd799439011'
+    }
+    col.delete_one.return_value = MagicMock(deleted_count=0)
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/items/{item_id}', headers=_auth_headers())
+            assert r.status_code == 404
+
+
+# Delete All Items
+
+@pytest.mark.unit
+def test_delete_all_items_manager():
+    """Manager can clear all items."""
+    from app import app
+    mock_db = MagicMock()
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete('/api/items/clear', headers=_auth_headers('MANAGER'))
+            assert r.status_code == 204
+
+
+@pytest.mark.unit
+def test_delete_all_items_non_manager():
+    """Member cannot clear items."""
+    from app import app
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=MagicMock()):
+        with app.test_client() as c:
+            r = c.delete('/api/items/clear', headers=_auth_headers('MEMBER'))
+            assert r.status_code == 403
+
+
+# Group Member Routes
+
+@pytest.mark.unit
+def test_get_group_members_success():
+    """GET /api/groups/members returns member list."""
+    from app import app
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find.return_value = [
+        {'_id': ObjectId(), 'full_name': 'Alice', 'email': 'a@a.com', 'role': 'MANAGER'},
+        {'_id': ObjectId(), 'full_name': 'Bob', 'email': 'b@b.com', 'role': 'MEMBER'},
+    ]
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.get('/api/groups/members', headers=_auth_headers())
+            assert r.status_code == 200
+            assert len(r.get_json()) == 2
+
+
+@pytest.mark.unit
+def test_manage_member_promote():
+    """Manager can promote a member."""
+    from app import app
+    target_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': target_id, 'group_id': 'group-456',
+        'role': 'MEMBER', 'full_name': 'Bob'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/groups/members/{target_id}',
+                      json={'role': 'MANAGER'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 200
+
+
+@pytest.mark.unit
+def test_manage_member_remove():
+    """Manager can remove a member."""
+    from app import app
+    target_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': target_id, 'group_id': 'group-456',
+        'role': 'MEMBER', 'full_name': 'Bob'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.delete(f'/api/groups/members/{target_id}',
+                         headers=_auth_headers('MANAGER'))
+            assert r.status_code == 204
+
+
+@pytest.mark.unit
+def test_manage_member_non_manager():
+    """Member cannot manage other members."""
+    from app import app
+    target_id = ObjectId()
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=MagicMock()):
+        with app.test_client() as c:
+            r = c.put(f'/api/groups/members/{target_id}',
+                      json={'role': 'MANAGER'},
+                      headers=_auth_headers('MEMBER'))
+            assert r.status_code == 403
+
+
+@pytest.mark.unit
+def test_manage_member_self():
+    """Manager cannot promote/remove themselves."""
+    from app import app
+    self_id = ObjectId('507f1f77bcf86cd799439011')
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': self_id, 'group_id': 'group-456',
+        'role': 'MANAGER', 'full_name': 'Test User'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/groups/members/{self_id}',
+                      json={'role': 'MEMBER'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_manage_member_invalid_id():
+    """Invalid user ID returns 400."""
+    from app import app
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=MagicMock()):
+        with app.test_client() as c:
+            r = c.put('/api/groups/members/bad-id',
+                      json={'role': 'MANAGER'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 400
+
+
+@pytest.mark.unit
+def test_manage_member_not_found():
+    """Returns 404 when target user not in group."""
+    from app import app
+    target_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = None
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/groups/members/{target_id}',
+                      json={'role': 'MANAGER'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 404
+
+
+@pytest.mark.unit
+def test_manage_member_invalid_role():
+    """Invalid role value returns 400."""
+    from app import app
+    target_id = ObjectId()
+    mock_db = MagicMock()
+    col = mock_db.__getitem__.return_value
+    col.find_one.return_value = {
+        '_id': target_id, 'group_id': 'group-456',
+        'role': 'MEMBER', 'full_name': 'Bob'
+    }
+    with patch('auth.get_db', side_effect=Exception("skip")), \
+         patch('app.get_db', return_value=mock_db):
+        with app.test_client() as c:
+            r = c.put(f'/api/groups/members/{target_id}',
+                      json={'role': 'ADMIN'},
+                      headers=_auth_headers('MANAGER'))
+            assert r.status_code == 400
