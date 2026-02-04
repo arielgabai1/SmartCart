@@ -117,27 +117,29 @@ pipeline {
             }
         }
 
-        stage('Git Tag & Push') {
+        stage('Tag & Publish') {
             when { branch 'main' }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                    sh "git tag ${env.VERSION}"
-                    sh "git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git ${env.VERSION}"
+            parallel {
+                stage('Git Tag & Push') {
+                    steps {
+                        withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                            sh "git tag ${env.VERSION}"
+                            sh "git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git ${env.VERSION}"
+                        }
+                    }
+                }
+                stage('Publish to ECR') {
+                    steps {
+                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
+                        script {
+                            def image = docker.image(env.BACKEND_IMAGE)
+                            image.push(env.VERSION)
+                            image.push('latest')
+                        }
+                    }
                 }
             }
         }
-
-        stage('Publish to ECR') {
-            when { branch 'main' }
-            steps {
-                sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
-                script {
-                    def image = docker.image(env.BACKEND_IMAGE)
-                    image.push(env.VERSION)
-                    image.push('latest')
-                }
-            }
-        }   
 
         stage('Deploy to GitOps') {
             when { branch 'main' }
