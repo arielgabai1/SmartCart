@@ -15,5 +15,4 @@ graceful_timeout = 30
 # Logging - JSON format for access logs
 errorlog = '-'
 loglevel = 'warning'
-accesslog = '-'
-access_log_format = '{"timestamp":"%(t)s","level":"INFO","service":"smartcart-backend","event":"http_request","method":"%(m)s","path":"%(U)s","status":%(s)s,"duration_ms":%(M)s,"remote_addr":"%(h)s","user_agent":"%(a)s"}'
+accesslog = None  # Request logging handled by Flask after_request
