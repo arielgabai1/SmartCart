@@ -76,7 +76,9 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside { sh 'pytest tests/unit_tests.py' }
+                    docker.image(env.BACKEND_IMAGE).inside {
+                        sh 'pytest tests/unit_tests.py --cov=src --cov-report=xml:coverage.xml'
+                    }
                 }
             }
         }
@@ -101,6 +103,19 @@ pipeline {
                 script {
                     docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
+                    }
+                }
+            }
+        }
+
+        stage('SonarCloud Analysis') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            steps {
+                withCredentials([string(credentialsId: 'sonarcloud-token', variable: 'SONAR_TOKEN')]) {
+                    script {
+                        docker.image('sonarsource/sonar-scanner-cli:latest').inside {
+                            sh 'sonar-scanner'
+                        }
                     }
                 }
             }
