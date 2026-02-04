@@ -34,6 +34,8 @@ class ContextualJsonFormatter(jsonlogger.JsonFormatter):
             log_record['trace_id'] = g.trace_id
         if hasattr(g, 'user_id'):
             log_record['user_id'] = g.user_id
+        if hasattr(g, 'group_id'):
+            log_record['group_id'] = g.group_id
 
 def setup_logging() -> logging.Logger:
     """Configures JSON logging for the application."""
@@ -87,7 +89,7 @@ def before_request():
 @app.after_request
 def after_request(response):
     try:
-        # Skip logging for health checks and metrics
+        # Skip metrics collection for health checks and metrics endpoints
         if request.path in ['/api/health', '/metrics']:
             return response
 
@@ -101,22 +103,20 @@ def after_request(response):
             REQUEST_COUNT.labels(method=method, endpoint=endpoint, status=status).inc()
             REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(duration_ms / 1000)
 
-        # Structured request log
         log_data = {
-            'event': 'request_completed',
+            'event': 'http_request',
             'method': request.method,
             'path': request.path,
             'status_code': response.status_code,
             'duration_ms': duration_ms,
             'remote_addr': request.remote_addr,
+            'user_agent': request.headers.get('User-Agent', ''),
         }
-        if hasattr(g, 'user_id'):
-            log_data['user_id'] = g.user_id
 
         if response.status_code >= 500:
-            logger.error("Request failed", extra=log_data)
+            logger.error("Server error", extra=log_data)
         elif response.status_code >= 400:
-            logger.warning("Request error", extra=log_data)
+            logger.warning("Client error", extra=log_data)
         else:
             logger.info("Request completed", extra=log_data)
 
