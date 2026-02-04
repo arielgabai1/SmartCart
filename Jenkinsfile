@@ -81,8 +81,7 @@ pipeline {
                     steps {
                         script {
                             docker.image(env.BACKEND_IMAGE).inside {
-                                sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml || true'
-                                sh 'bandit -r src/ -c tests/bandit.yaml --severity-level high'
+                                sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
                             }
                         }
                         archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
@@ -100,7 +99,7 @@ pipeline {
                 }
                 stage('Trivy') {
                     steps {
-                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \${WORKSPACE}:/workspace aquasec/trivy:latest image --severity HIGH,CRITICAL --format json -o /workspace/trivy.json ${env.BACKEND_IMAGE} || true"
+                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --exit-code 1 --format json ${env.BACKEND_IMAGE} > trivy.json"
                         archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
                     }
                 }
