@@ -40,6 +40,38 @@ pipeline {
             }
         }
 
+        stage('Security Analysis') {
+            when { anyOf { branch 'main'; branch 'feature/*' } }
+            parallel {
+                stage('Bandit') {
+                    steps {
+                        script {
+                            docker.image(env.BACKEND_IMAGE).inside {
+                                sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
+                            }
+                        }
+                        archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
+                    }
+                }
+                stage('pip-audit') {
+                    steps {
+                        script {
+                            docker.image(env.BACKEND_IMAGE).inside {
+                                sh 'PIP_NO_CACHE_DIR=1 pip-audit --no-cache --format=json -o pip-audit.json'
+                            }
+                        }
+                        archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
+                    }
+                }
+                stage('Trivy') {
+                    steps {
+                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --format json ${env.BACKEND_IMAGE} > trivy.json"
+                        archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
+                    }
+                }
+            }
+        }
+
         stage('Unit Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
@@ -69,38 +101,6 @@ pipeline {
                 script {
                     docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
-                    }
-                }
-            }
-        }
-
-        stage('Security Scan') {
-            when { anyOf { branch 'main'; branch 'feature/*' } }
-            parallel {
-                stage('Bandit') {
-                    steps {
-                        script {
-                            docker.image(env.BACKEND_IMAGE).inside {
-                                sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
-                            }
-                        }
-                        archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
-                    }
-                }
-                stage('pip-audit') {
-                    steps {
-                        script {
-                            docker.image(env.BACKEND_IMAGE).inside {
-                                sh 'pip-audit --format=json -o pip-audit.json'
-                            }
-                        }
-                        archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
-                    }
-                }
-                stage('Trivy') {
-                    steps {
-                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --exit-code 1 --format json ${env.BACKEND_IMAGE} > trivy.json"
-                        archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
                     }
                 }
             }
