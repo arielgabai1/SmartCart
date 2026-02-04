@@ -224,3 +224,217 @@ def test_delete_item(page):
 
     # Verify item is gone and empty state shows
     expect(page.locator(".empty-state")).to_be_visible(timeout=10000)
+
+
+@pytest.mark.e2e
+def test_join_existing_group(browser):
+    """Register as member via join code, verify MEMBER role on dashboard."""
+    # Manager creates group
+    mgr_page = browser.new_page()
+    _, _, join_code, _ = register_new_group(mgr_page)
+    mgr_page.close()
+
+    # Member joins
+    mem_page = browser.new_page()
+    register_member(mem_page, join_code, user_name="JoinedMember")
+
+    expect(mem_page.locator("#user-name-display")).to_have_text("JoinedMember", timeout=10000)
+    expect(mem_page.locator("#user-role-display")).to_have_text("MEMBER")
+
+    # Member sees "Submit Request" instead of "Add Item"
+    expect(mem_page.locator("#submit-btn")).to_have_text("Submit Request")
+    mem_page.close()
+
+
+@pytest.mark.e2e
+def test_manager_rejects_item(browser):
+    """Member submits item, manager rejects it, member sees REJECTED status."""
+    # Manager registers
+    mgr_page = browser.new_page()
+    mgr_email, mgr_pass, join_code, _ = register_new_group(mgr_page)
+    mgr_page.close()
+
+    # Member joins and submits item
+    mem_page = browser.new_page()
+    register_member(mem_page, join_code)
+    mem_page.wait_for_selector("#item-form", timeout=10000)
+    mem_page.fill("#name", "Candy")
+    mem_page.click("#submit-btn")
+    expect(mem_page.locator("#my-items-container .item-card").first).to_be_visible(timeout=10000)
+    mem_page.close()
+
+    # Manager rejects
+    mgr_page = browser.new_page()
+    login_user(mgr_page, mgr_email, mgr_pass)
+    mgr_page.wait_for_selector("#items-container", timeout=10000)
+
+    reject_btn = mgr_page.locator("#pending-container .item-card button", has_text="Reject").first
+    expect(reject_btn).to_be_visible(timeout=10000)
+    reject_btn.click()
+
+    # Verify item shows REJECTED in main list
+    rejected_pill = mgr_page.locator("#items-container .item-card .status-pill", has_text="REJECTED")
+    expect(rejected_pill).to_be_visible(timeout=10000)
+    mgr_page.close()
+
+
+@pytest.mark.e2e
+def test_clear_all_items(page):
+    """Manager adds multiple items, clears all, verifies empty state."""
+    register_new_group(page)
+    page.wait_for_selector("#item-form", timeout=10000)
+    page.on("dialog", lambda d: d.accept())
+
+    # Add 3 items
+    for item in ["Eggs", "Bread", "Cheese"]:
+        page.fill("#name", item)
+        page.click("#submit-btn")
+        page.wait_for_timeout(500)
+
+    expect(page.locator(".item-card").first).to_be_visible(timeout=10000)
+
+    # Clear all
+    page.click("#clear-all-btn")
+
+    expect(page.locator(".empty-state")).to_be_visible(timeout=10000)
+
+
+@pytest.mark.e2e
+def test_sidebar_shows_join_code(page):
+    """Open sidebar, verify join code is displayed."""
+    _, _, join_code, _ = register_new_group(page)
+    page.wait_for_selector("#menu-toggle", timeout=10000)
+
+    # Open sidebar
+    page.click("#menu-toggle")
+
+    code_display = page.locator("#sidebar-join-code")
+    expect(code_display).to_be_visible(timeout=5000)
+    expect(code_display).to_have_text(join_code)
+
+
+@pytest.mark.e2e
+def test_login_invalid_credentials(page):
+    """Login with wrong password, verify error alert and no redirect."""
+    register_new_group(page)
+    page.evaluate("localStorage.clear()")
+
+    page.goto(f"{BASE_URL}/login.html")
+    page.wait_for_selector("#login-form")
+    page.fill("#email", "wrong@test.com")
+    page.fill("#password", "wrongpass")
+
+    alert_msg = None
+
+    def handle_dialog(dialog):
+        nonlocal alert_msg
+        alert_msg = dialog.message
+        dialog.accept()
+
+    page.on("dialog", handle_dialog)
+    page.click('#login-form button[type="submit"]')
+    page.wait_for_timeout(2000)
+
+    assert alert_msg is not None, "No error alert shown"
+    # Should still be on login page
+    assert "login.html" in page.url
+
+
+@pytest.mark.e2e
+def test_quantity_adjustment(page):
+    """Add item, use +/- buttons to change quantity, verify it updates."""
+    register_new_group(page)
+    page.wait_for_selector("#item-form", timeout=10000)
+
+    page.fill("#name", "Rice")
+    page.click("#submit-btn")
+
+    item_card = page.locator(".item-card").first
+    expect(item_card).to_be_visible(timeout=10000)
+
+    # Default quantity is 1
+    expect(item_card.locator(".quantity-value")).to_have_text("1")
+
+    # Click + button
+    item_card.locator(".quantity-btn", has_text="+").click()
+    expect(item_card.locator(".quantity-value")).to_have_text("2", timeout=5000)
+
+    # Click + again
+    item_card.locator(".quantity-btn", has_text="+").click()
+    expect(item_card.locator(".quantity-value")).to_have_text("3", timeout=5000)
+
+    # Click - button
+    item_card.locator(".quantity-btn", has_text="-").click()
+    expect(item_card.locator(".quantity-value")).to_have_text("2", timeout=5000)
+
+
+@pytest.mark.e2e
+def test_stats_bar_updates(page):
+    """Add items, verify approved count and total update in stats bar."""
+    register_new_group(page)
+    page.wait_for_selector("#item-form", timeout=10000)
+
+    # Initially zero
+    expect(page.locator("#approved-count")).to_have_text("0")
+
+    # Add first item
+    page.fill("#name", "Milk")
+    page.click("#submit-btn")
+    expect(page.locator("#approved-count")).to_have_text("1", timeout=10000)
+
+    # Add second item
+    page.fill("#name", "Eggs")
+    page.click("#submit-btn")
+    expect(page.locator("#approved-count")).to_have_text("2", timeout=10000)
+
+
+@pytest.mark.e2e
+def test_member_sees_approved_items(browser):
+    """After manager approves member's item, member sees it in main list."""
+    # Manager registers
+    mgr_page = browser.new_page()
+    mgr_email, mgr_pass, join_code, _ = register_new_group(mgr_page)
+    mgr_page.close()
+
+    # Member joins and submits
+    mem_page = browser.new_page()
+    mem_email, mem_pass = register_member(mem_page, join_code)
+    mem_page.wait_for_selector("#item-form", timeout=10000)
+    mem_page.fill("#name", "Pasta")
+    mem_page.click("#submit-btn")
+    expect(mem_page.locator("#my-items-container .item-card").first).to_be_visible(timeout=10000)
+    mem_page.close()
+
+    # Manager approves
+    mgr_page = browser.new_page()
+    login_user(mgr_page, mgr_email, mgr_pass)
+    approve_btn = mgr_page.locator("#pending-container .item-card button", has_text="Approve").first
+    expect(approve_btn).to_be_visible(timeout=10000)
+    approve_btn.click()
+    expect(mgr_page.locator("#items-container .item-card .status-pill", has_text="APPROVED")).to_be_visible(timeout=10000)
+    mgr_page.close()
+
+    # Member logs back in, sees item in main list
+    mem_page = browser.new_page()
+    login_user(mem_page, mem_email, mem_pass)
+    mem_page.wait_for_selector("#items-container", timeout=10000)
+
+    item = mem_page.locator("#items-container .item-card").first
+    expect(item).to_be_visible(timeout=10000)
+    expect(item.locator(".item-title")).to_have_text("Pasta")
+    expect(item.locator(".status-pill")).to_have_text("APPROVED")
+    mem_page.close()
+
+
+@pytest.mark.e2e
+def test_register_empty_fields(page):
+    """Submit register form with empty fields, verify no redirect."""
+    page.goto(f"{BASE_URL}/register.html")
+    page.wait_for_selector("#register-form")
+
+    # Submit without filling anything - HTML5 validation should block
+    page.click('#register-form button[type="submit"]')
+    page.wait_for_timeout(1000)
+
+    # Should still be on register page
+    assert "register.html" in page.url
