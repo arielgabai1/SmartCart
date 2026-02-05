@@ -4,8 +4,8 @@ pipeline {
     environment {
         ECR_URL    = '043187663485.dkr.ecr.ap-south-1.amazonaws.com/smartcart'
         S3_BUCKET  = 'smartcart-frontend'
-        AWS_REGION = 'ap-south-1'
         DOMAIN     = 'smartcart.arielgabai.com'
+        GITLAB_URL = 'gitlab.com/arielgabai'
     }
 
     options {
@@ -17,16 +17,17 @@ pipeline {
 
     stages {
 
+        // Bump patch version from latest git tag
         stage('Version Calculation') {
             when { branch 'main' }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                    script {
-                        sh "git fetch https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git --tags"
-                        def latestTag = sh(script: 'git tag --sort=-v:refname | head -1', returnStdout: true).trim()
-                        def (major, minor, patch) = latestTag.tokenize('.')
-                        env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
+                script {
+                    withGitLab {
+                        sh "git fetch https://\${GIT_USER}:\${GIT_TOKEN}@${GITLAB_URL}/smartcart.git --tags"
                     }
+                    def latestTag = sh(script: 'git tag --sort=-v:refname | head -1', returnStdout: true).trim()
+                    def (major, minor, patch) = latestTag.tokenize('.')
+                    env.VERSION = "${major}.${minor}.${patch.toInteger() + 1}"
                 }
             }
         }
@@ -42,13 +43,14 @@ pipeline {
             }
         }
 
+        // Parallel SAST + dependency audit + container scan
         stage('Security Analysis') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             parallel {
                 stage('Bandit') {
                     steps {
                         script {
-                            docker.image(env.BACKEND_IMAGE).inside {
+                            withAppContainer {
                                 sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
                             }
                         }
@@ -58,7 +60,7 @@ pipeline {
                 stage('pip-audit') {
                     steps {
                         script {
-                            docker.image(env.BACKEND_IMAGE).inside {
+                            withAppContainer {
                                 sh 'pip-audit --format=json -o pip-audit.json'
                             }
                         }
@@ -78,7 +80,7 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside {
+                    withAppContainer {
                         sh 'pytest tests/unit_tests.py --cov=src --cov-report=xml:coverage.xml'
                     }
                 }
@@ -98,6 +100,7 @@ pipeline {
             }
         }
 
+        // Spin up full stack via docker compose, run tests against it
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
@@ -112,7 +115,7 @@ pipeline {
                 }
 
                 script {
-                    docker.image(env.BACKEND_IMAGE).inside('--network smartcart_frontend-net') {
+                    withAppContainer('--network smartcart_frontend-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
                     }
                 }
@@ -135,53 +138,55 @@ pipeline {
             parallel {
                 stage('Git Tag') {
                     steps {
-                        withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                            sh "git tag ${env.VERSION}"
-                            sh "git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart.git ${env.VERSION}"
+                        script {
+                            withGitLab {
+                                sh "git tag ${env.VERSION} && git push https://\${GIT_USER}:\${GIT_TOKEN}@${GITLAB_URL}/smartcart.git ${env.VERSION}"
+                            }
                         }
                     }
                 }
                 stage('Publish to ECR') {
                     steps {
-                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URL}"
-                        script {
-                            def image = docker.image(env.BACKEND_IMAGE)
-                            image.push(env.VERSION)
-                            image.push('latest')
+                        withAWS(region: env.AWS_REGION) {
+                            ecrLogin()
+                            script {
+                                docker.image(env.BACKEND_IMAGE).push(env.VERSION)
+                                docker.image(env.BACKEND_IMAGE).push('latest')
+                            }
                         }
                     }
                 }
             }
         }
 
+        // Parallel: bump GitOps image tag + sync frontend to CDN
         stage('Deploy') {
             when { branch 'main' }
             parallel {
                 stage('Deploy to GitOps') {
                     steps {
-                        withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
-                            sh """
-                                git clone https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git
-                                cd smartcart-gitops
-                                sed -i '/repository: 043187663485.dkr.ecr.ap-south-1.amazonaws.com\\/smartcart\$/{ n; s/tag: ".*"/tag: "${env.VERSION}"/; }' smartcart/values.yaml
-                                git config user.email "jenkins@ariel.com"
-                                git config user.name "Ariel's Jenkins Bot"
-                                git add smartcart/values.yaml
-                                git commit -m "update backend image to ${env.VERSION}"
-                                git push https://\${GIT_USER}:\${GIT_TOKEN}@gitlab.com/arielgabai/smartcart-gitops.git main
-                            """
+                        script {
+                            withGitLab {
+                                sh """
+                                    git clone https://\${GIT_USER}:\${GIT_TOKEN}@${GITLAB_URL}/smartcart-gitops.git
+                                    cd smartcart-gitops
+                                    sed -i '/repository: 043187663485.dkr.ecr.ap-south-1.amazonaws.com\\/smartcart\$/{ n; s/tag: ".*"/tag: "${env.VERSION}"/; }' smartcart/values.yaml
+                                    git config user.email "jenkins@ariel.com"
+                                    git config user.name "Ariel's Jenkins Bot"
+                                    git add smartcart/values.yaml
+                                    git commit -m "update backend image to ${env.VERSION}"
+                                    git push https://\${GIT_USER}:\${GIT_TOKEN}@${GITLAB_URL}/smartcart-gitops.git main
+                                """
+                            }
                         }
                     }
                 }
                 stage('Deploy Static to S3') {
                     steps {
-                        sh "aws s3 sync frontend/static/ s3://${S3_BUCKET}/ --delete --region ${AWS_REGION}"
-                        sh """
-                            DIST_ID=\$(aws cloudfront list-distributions \
-                                --query "DistributionList.Items[?contains(Aliases.Items, '${DOMAIN}')].Id" \
-                                --output text)
-                            aws cloudfront create-invalidation --distribution-id \$DIST_ID --paths '/*'
-                        """
+                        withAWS(region: env.AWS_REGION) {
+                            sh "aws s3 sync frontend/static/ s3://${S3_BUCKET}/ --delete"
+                            cfInvalidate(distribution: cfDistId(), paths: ['/*'])
+                        }
                     }
                 }
             }
@@ -196,12 +201,28 @@ pipeline {
             cleanWs()
             script {
                 def colors = [SUCCESS: 'good', FAILURE: 'danger', ABORTED: 'warning']
-                def version = env.VERSION ?: 'dev'
                 slackSend(
                     color: colors[currentBuild.result] ?: 'warning',
-                    message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${version})"
+                    message: "${currentBuild.result}: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.VERSION ?: 'dev'})"
                 )
             }
         }
     }
+}
+
+// Wraps GitLab PAT credentials
+def withGitLab(Closure body) {
+    withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+        body()
+    }
+}
+
+// Runs closure inside the backend Docker image
+def withAppContainer(String args = '', Closure body) {
+    docker.image(env.BACKEND_IMAGE).inside(args) { body() }
+}
+
+// Looks up CloudFront distribution ID by domain alias
+def cfDistId() {
+    sh(script: "aws cloudfront list-distributions --query \"DistributionList.Items[?contains(Aliases.Items, '${env.DOMAIN}')].Id\" --output text", returnStdout: true).trim()
 }
