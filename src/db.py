@@ -34,7 +34,13 @@ def get_db_connection(max_retries=5, retry_delay=2):
 
     for attempt in range(1, max_retries + 1):
         try:
-            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            client = MongoClient(
+                mongo_uri,
+                serverSelectionTimeoutMS=5000,
+                maxPoolSize=20,
+                minPoolSize=2,
+                maxIdleTimeMS=30000,
+            )
             client.admin.command('ping')
             logger.info('MongoDB connection established', extra={'attempt': attempt})
             return client
