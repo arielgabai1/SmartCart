@@ -17,7 +17,6 @@ pipeline {
 
     stages {
 
-        // Bump patch version from latest git tag
         stage('Version Calculation') {
             when { branch 'main' }
             steps {
@@ -32,18 +31,17 @@ pipeline {
             }
         }
 
-        stage('Build Backend Image') {
+        stage('Build Docker Image') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
                     env.IMAGE_TAG = env.VERSION ?: 'dev'
-                    env.BACKEND_IMAGE = "${ECR_URL}:${env.IMAGE_TAG}"
-                    docker.build(env.BACKEND_IMAGE)
+                    env.IMAGE = "${ECR_URL}:${env.IMAGE_TAG}"
+                    docker.build(env.IMAGE)
                 }
             }
         }
 
-        // Parallel SAST + dependency audit + container scan
         stage('Security Analysis') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             parallel {
@@ -69,7 +67,7 @@ pipeline {
                 }
                 stage('Trivy') {
                     steps {
-                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --format json ${env.BACKEND_IMAGE} > trivy.json"
+                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --format json ${env.IMAGE} > trivy.json"
                         archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
                     }
                 }
@@ -100,11 +98,10 @@ pipeline {
             }
         }
 
-        // Spin up full stack via docker compose, run tests against it
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh "BACKEND_IMAGE=${env.BACKEND_IMAGE} docker compose up -d --build"
+                sh "BACKEND_IMAGE=${env.IMAGE} docker compose up -d --build"
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
@@ -149,8 +146,8 @@ pipeline {
                     steps {
                         sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 043187663485.dkr.ecr.ap-south-1.amazonaws.com'
                         script {
-                            docker.image(env.BACKEND_IMAGE).push(env.VERSION)
-                            docker.image(env.BACKEND_IMAGE).push('latest')
+                            docker.image(env.IMAGE).push(env.VERSION)
+                            docker.image(env.IMAGE).push('latest')
                         }
                     }
                 }
@@ -172,7 +169,7 @@ pipeline {
                                     git config user.email "jenkins@ariel.com"
                                     git config user.name "Ariel's Jenkins Bot"
                                     git add smartcart/values.yaml
-                                    git commit -m "update backend image to ${env.VERSION}"
+                                    git commit -m "update image to ${env.VERSION}"
                                     git push https://\${GIT_USER}:\${GIT_TOKEN}@${GITLAB_URL}/smartcart-gitops.git main
                                 """
                             }
@@ -208,19 +205,16 @@ pipeline {
     }
 }
 
-// Wraps GitLab PAT credentials
 def withGitLab(Closure body) {
     withCredentials([usernamePassword(credentialsId: 'GitLab PAT', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
         body()
     }
 }
 
-// Runs closure inside the backend Docker image
 def withAppContainer(String args = '', Closure body) {
-    docker.image(env.BACKEND_IMAGE).inside(args) { body() }
+    docker.image(env.IMAGE).inside(args) { body() }
 }
 
-// Looks up CloudFront distribution ID by domain alias
 def cfDistId() {
     sh(script: "aws cloudfront list-distributions --query \"DistributionList.Items[?contains(Aliases.Items, '${env.DOMAIN}')].Id\" --output text", returnStdout: true).trim()
 }
