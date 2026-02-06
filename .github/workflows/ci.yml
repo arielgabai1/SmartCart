@@ -171,6 +171,3 @@ jobs:
           echo '### Integration & E2E Tests' >> $GITHUB_STEP_SUMMARY
           echo 'Full stack tests completed' >> $GITHUB_STEP_SUMMARY
 
-      - name: Teardown
-        if: always()
-        run: docker compose down -v
