@@ -154,7 +154,6 @@ pipeline {
             }
         }
 
-        // Parallel: bump GitOps image tag + sync frontend to CDN
         stage('Deploy') {
             when { branch 'main' }
             parallel {
