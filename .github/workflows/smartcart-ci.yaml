@@ -4,14 +4,9 @@ on:
   push:
     branches: [feature/*]
 
-# "concurrency" - PRESET keyword. Controls parallel execution of this workflow.
 concurrency:
-  # "group" - runs with the same group name cancel each other. ${{ }} is GHA expression syntax.
-  # "github.ref" is a PRESET variable = the branch name (e.g. "refs/heads/feature/login").
-  # So each feature branch gets its own concurrency group.
   group: ${{ github.ref }}
-  # If a new push happens while a previous run is still going, cancel the old one.
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read 
