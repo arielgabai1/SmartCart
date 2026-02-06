@@ -2,226 +2,295 @@
 
 <div align="center">
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
+![Python](https://img.shields.io/badge/python-3.14.2-blue)
+![Flask](https://img.shields.io/badge/flask-3.0-green)
+![MongoDB](https://img.shields.io/badge/mongodb-8.2-brightgreen)
 ![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)
-![Status](https://img.shields.io/badge/status-active-success)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-**A family grocery list management application with multi-tenancy support and AI-powered price estimation.**
+**A collaborative family grocery list with AI-powered price estimation, multi-tenancy, and production-grade infrastructure.**
 
-[Quick Start](#quick-start) • [Configuration](#configuration) • [Development](#development) • [API Documentation](#api-documentation) • [Troubleshooting](#troubleshooting)
+[Overview](#overview) · [Architecture](#architecture) · [Getting Started](#getting-started) · [API Reference](#api-reference) · [CI/CD](#cicd) · [Observability](#observability) · [Related Repos](#related-repositories)
 
 </div>
 
 ## Overview
 
-SmartCart is a collaborative web application designed to streamline grocery shopping for families and groups. It allows members to add items to a shared list, while managers maintain control through approval workflows. The system leverages AI to estimate prices automatically, helping users budget effectively.
+SmartCart lets families and groups manage shared grocery lists with role-based access control. Managers approve items submitted by members, while an AI engine (OpenAI gpt-4o-mini) estimates prices in NIS automatically. Each group is fully isolated via join codes and scoped data.
 
 ## Features
 
--   **Multi-Tenancy**: Complete data isolation between groups.
--   **Role-Based Access**: Granular permissions for **Managers** (approve/reject/manage users) and **Members** (add items).
--   **AI Integration**: Automatic price estimation for added items using OpenAI.
--   **Real-Time Sync**: Polling mechanism ensures all users see the latest list state.
--   **Observability**: Integrated Prometheus metrics for monitoring application health and usage.
+- **Multi-tenancy** -- groups isolated by join codes, all data scoped to `group_id`
+- **Role-based access** -- MANAGER (full control, approve/reject) and MEMBER (submit items)
+- **AI price estimation** -- OpenAI gpt-4o-mini estimates Israeli market prices in NIS
+- **Production infrastructure** -- EKS cluster with CloudFront CDN serving static files from S3
+- **GitOps** -- ArgoCD with sync-waves (ESO -> ClusterSecretStore -> SmartCart)
+- **Observability** -- Prometheus + Grafana dashboards, EFK stack for log aggregation
+- **CI/CD** -- Jenkins (main) + GitHub Actions (feature branches), security scanning pipeline
+- **Auto-scaling** -- HPA (1-3 pods) + Karpenter for node provisioning
 
 ## Architecture
 
-SmartCart employs a containerized microservices architecture:
+### Local Development
 
 ```mermaid
 graph LR
-    User[Browser] -->|Port 80| Nginx[Nginx Frontend]
-    User -->|Port 8081| Metrics[Prometheus Metrics]
-    
-    subgraph Docker Network
-        Nginx -->|/api| Flask[Flask Backend :5000]
-        Nginx -->|/| Static[Static Files]
-        Flask -->|Persisted| Mongo[MongoDB :27017]
+    Browser -->|:80| Nginx
+    Nginx -->|/api/| Flask[:5000]
+    Nginx -->|/| Static[Static Files]
+    Flask --> MongoDB[:27017]
+    Prometheus -.->|scrape :8081| Flask
+```
+
+### Production
+
+```mermaid
+graph TB
+    User --> CloudFront
+
+    subgraph CDN
+        CloudFront -->|static files| S3
+        CloudFront -->|/api/*| Origin[origin.arielgabai.com]
+    end
+
+    Origin --> Ingress[Nginx Ingress]
+
+    subgraph EKS Cluster
+        Ingress --> Pods[SmartCart Pods<br>HPA 1-3]
+        Pods --> MongoDB[MongoDB ReplicaSet]
+        ArgoCD -->|sync| Pods
+        ESO[External Secrets Operator] -->|inject| Pods
+        ESO --> SecretsManager[AWS Secrets Manager]
+        Prometheus -->|scrape :8081| Pods
+        Prometheus --> Grafana
+        FluentBit --> Elasticsearch --> Kibana
     end
 ```
 
-### Services
+## Tech Stack
 
-| Service | Internal Port | Host Port | Description |
-| :--- | :--- | :--- | :--- |
-| **Frontend** | 80 | **80** | Nginx serving static assets and reverse proxying API requests. |
-| **Backend** | 5000 | - | Flask REST API (accessible only via Nginx). |
-| **Backend (Metrics)** | 8081 | **8081** | Dedicated Prometheus metrics endpoint. |
-| **Database** | 27017 | - | MongoDB for data persistence. |
+- **Backend**: Python 3.14.2, Flask 3.0, Gunicorn 23.0, PyMongo 4.6.3, PyJWT 2.8, bcrypt 4.1, OpenAI SDK
+- **Frontend**: Vanilla JS, S3 + CloudFront (prod), Nginx (dev)
+- **Database**: MongoDB 8.2 (standalone dev, replica set prod)
+- **Infrastructure**: AWS EKS, Karpenter, ArgoCD, External Secrets Operator, CloudFront + S3, Cloudflare DNS
+- **Observability**: Prometheus, Grafana, Elasticsearch, Kibana, Fluent Bit
+- **Testing**: pytest 8.0, mongomock, Playwright
+- **Security**: Bandit, Trivy, pip-audit, SonarCloud
 
-## Quick Start
+## Project Structure
+
+```
+SmartCart/
+├── src/
+│   ├── app.py              # Flask app, routes, middleware
+│   ├── auth.py             # JWT, bcrypt, registration
+│   ├── models.py           # Data validation, serialization
+│   ├── ai_engine.py        # OpenAI price estimation
+│   ├── db.py               # MongoDB connection with retry
+│   ├── metrics_server.py   # Prometheus metrics (port 8081)
+│   ├── metrics_utils.py    # DB metric collectors
+│   └── gunicorn.conf.py    # 1 worker, 8 threads, port 5000
+├── static/
+│   ├── index.html           # Main app page
+│   ├── login.html           # Login page
+│   ├── register.html        # Registration page
+│   ├── css/style.css
+│   └── js/app.js            # Vanilla JS (auth, API, state, polling)
+├── tests/
+│   ├── unit_tests.py
+│   ├── integration_tests.py
+│   ├── e2e_tests.py
+│   ├── conftest.py
+│   └── bandit.yaml
+├── dev/
+│   ├── docker-compose.yml   # Local dev orchestration
+│   ├── Dockerfile           # Nginx frontend image
+│   └── conf.d/              # Nginx config (reverse proxy)
+├── .github/workflows/
+│   └── smartcart.yaml       # GitHub Actions (feature branches)
+├── Dockerfile               # Backend image (python:3.14.2-alpine)
+├── Jenkinsfile              # Main CI/CD pipeline
+├── requirements.txt
+├── pytest.ini
+└── sonar-project.properties
+```
+
+## Getting Started
 
 ### Prerequisites
 
--   [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
--   An OpenAI API Key (for price estimation features)
+- Docker and Docker Compose
+- An OpenAI API key (for price estimation)
 
-### One-Command Setup
+### Setup
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/yourusername/SmartCart.git
-    cd SmartCart
-    ```
-
-2.  **Configure Environment**
-    Create a `.env` file from the example:
-    ```bash
-    cp .env.example .env
-    # Edit .env to add your OPENAI_API_KEY
-    ```
-
-3.  **Run with Docker Compose**
-    ```bash
-    docker-compose up --build -d
-    ```
-
-4.  **Access the Application**
-    -   Web UI: [http://localhost](http://localhost)
-    -   Metrics: [http://localhost:8081/metrics](http://localhost:8081/metrics)
-    -   Health Check: [http://localhost/api/health](http://localhost/api/health)
-
-### Stopping the App
-
-To stop containers and preserve data:
 ```bash
-docker-compose down
+git clone https://gitlab.com/arielgabai/smartcart.git
+cd SmartCart
 ```
 
-To stop containers and **destroy** data (reset):
+Create `dev/.env`:
+
+```env
+JWT_SECRET=your-secret
+MONGO_URI=mongodb://admin:password@mongodb:27017/smartcart?authSource=admin
+OPENAI_API_KEY=your-openai-key
+MONGO_INITDB_ROOT_USERNAME=admin
+MONGO_INITDB_ROOT_PASSWORD=password
+```
+
+Start the stack:
+
 ```bash
-docker-compose down -v
+docker compose -f dev/docker-compose.yml up --build -d
+```
+
+Access:
+- **UI**: http://localhost
+- **Metrics**: http://localhost:8081/metrics
+- **Health**: http://localhost/api/health
+
+Stop:
+
+```bash
+docker compose -f dev/docker-compose.yml down      # preserve data
+docker compose -f dev/docker-compose.yml down -v    # reset data
 ```
 
 ## Configuration
 
-### Environment Variables
+| Variable | Description | Default |
+|---|---|---|
+| `OPENAI_API_KEY` | OpenAI API key for price estimation | **Required** |
+| `OPENAI_MODEL` | OpenAI model name | `gpt-4o-mini` |
+| `JWT_SECRET` | Secret for signing JWT tokens | **Required** |
+| `MONGO_URI` | MongoDB connection string | **Required** |
+| `METRICS_PORT` | Prometheus metrics port | `8081` |
+| `MONGO_INITDB_ROOT_USERNAME` | MongoDB admin username | `admin` |
+| `MONGO_INITDB_ROOT_PASSWORD` | MongoDB admin password | `password` |
 
-The application is configured via environment variables. These can be set in the `.env` file or passed to the Docker container.
-
-| Variable | Description | Default / Required |
-| :--- | :--- | :--- |
-| **Backend Configuration** |
-| `OPENAI_API_KEY` | Key for OpenAI API (Price Estimation) | **Required** |
-| `OPENAI_MODEL` | OpenAI model to use | `gpt-4o-mini` |
-| `JWT_SECRET` | Secret key for signing JWT tokens | **Required** (set in .env) |
-| `MONGO_URI` | MongoDB connection string | `mongodb://...` (AUTO configured in Docker) |
-| `METRICS_PORT` | Port for Prometheus metrics server | `8081` |
-| **Database Initialization** |
-| `MONGO_INITDB_ROOT_USERNAME` | Admin username for MongoDB | `admin` |
-| `MONGO_INITDB_ROOT_PASSWORD` | Admin password for MongoDB | `password` |
-
-### Database Setup
-
--   **Initialization**: The MongoDB container initializes automatically using the credentials provided in `.env`.
--   **Persistence**: Data is stored in a Docker volume named `mongodb_data`.
--   **Backup**: You can use the following command to create a backup:
-    ```bash
-    docker run --rm -v smartcart_mongodb_data:/data -v $(pwd):/backup alpine tar czf /backup/db_backup.tar.gz /data
-    ```
-
-## Development
-
-### Project Structure
-
-```
-SmartCart/
-├── backend/                # Flask Application
-│   ├── src/                # Source code
-│   ├── tests/              # Pytest suites
-│   └── Dockerfile          # Backend container definition
-├── frontend/               # Static Web Assets
-│   ├── nginx.conf          # Nginx configuration
-│   └── Dockerfile          # Frontend container definition
-├── docker-compose.yml      # Main orchestration file
-└── docker-compose.test.yml # Test orchestration file
-```
-
-### Running Tests
-
-We use a separate Docker Compose file for running integration tests to ensure isolation.
+## Local Development (without Docker)
 
 ```bash
-docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+# Start MongoDB
+docker run -d -p 27017:27017 mongo:8.2
+
+# Setup Python environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run the app
+export MONGO_URI="mongodb://localhost:27017/smartcart"
+export JWT_SECRET="dev-secret"
+export OPENAI_API_KEY="your-key"
+python src/app.py
 ```
 
-### Local Development (Non-Docker)
+## Testing
 
-If you prefer running the backend locally for debugging:
+```bash
+# Unit tests
+docker run --rm smartcart pytest tests/unit_tests.py --cov=src --tb=short
 
-1.  **Start Mongo**: `docker run -d -p 27017:27017 mongo:8.2`
-2.  **Setup Venv**:
-    ```bash
-    cd backend
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
-3.  **Run Flask**:
-    ```bash
-    export MONGO_URI="mongodb://localhost:27017/smartcart"
-    export JWT_SECRET="debug-secret"
-    export OPENAI_API_KEY="your-key"
-    python src/app.py
-    ```
+# Full stack (integration + E2E) -- requires running compose stack
+docker compose -f dev/docker-compose.yml up -d --build
+docker run --rm --network smartcart_frontend-net smartcart pytest tests/integration_tests.py --no-cov
+```
 
-## API Documentation
+**Markers**: `p0` (critical), `p1` (PR), `p2` (nightly), `p3` (on-demand), `unit`, `integration`, `e2e`
 
-The backend exposes a RESTful API. All endpoints (except Auth/Health) require a Bearer Token in the Authorization header.
+**Coverage threshold**: 80% (enforced by pytest.ini)
+
+## CI/CD
+
+### Jenkins (main branch)
+
+The primary pipeline runs on `main` and `feature/*` branches:
+
+1. **Version Calculation** -- auto-increment patch from latest git tag
+2. **Build** -- Docker image from `python:3.14.2-alpine`
+3. **Security** (parallel) -- Bandit SAST, pip-audit, Trivy container scan
+4. **Unit Tests** -- pytest with coverage
+5. **SonarCloud** -- static analysis
+6. **Integration Tests** -- full Docker Compose stack
+7. **E2E Tests** -- Playwright browser tests
+8. **Tag & Publish** (parallel) -- git tag + ECR push
+9. **Deploy** (parallel) -- GitOps values update + S3 sync + CloudFront invalidation
+
+### GitHub Actions (feature branches)
+
+Runs on `feature/*` pushes:
+
+1. **Build** -- Docker build + artifact upload
+2. **Security** (matrix) -- Bandit, pip-audit, Trivy in parallel
+3. **Unit Tests** -- pytest with coverage
+4. **Integration + E2E** -- Docker Compose stack with Playwright
+5. **Notify** -- Slack webhook
+
+## API Reference
+
+All endpoints except auth and health require `Authorization: Bearer <token>`.
 
 ### Authentication
--   `POST /api/auth/register`: Register a new Group and Manager.
-    -   Body: `{ "group_name": "...", "user_name": "...", "email": "...", "password": "..." }`
--   `POST /api/auth/join`: Join an existing group using a Join Code.
-    -   Body: `{ "join_code": "...", "user_name": "...", "email": "...", "password": "..." }`
--   `POST /api/auth/login`: Login to receive a JWT token.
-    -   Body: `{ "email": "...", "password": "..." }`
--   `GET /api/auth/me`: Get current user details.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Create a new group and manager account |
+| `POST` | `/api/auth/join` | Join existing group via join code |
+| `POST` | `/api/auth/login` | Login, returns JWT token |
+| `GET` | `/api/auth/me` | Current user context |
 
 ### Items
--   `GET /api/items`: List all items in the group.
--   `POST /api/items`: Add a new item.
-    -   Body: `{ "name": "Milk", "category": "Dairy", "quantity": 1 }`
--   `PUT /api/items/<id>`: Update item status (Manager) or quantity.
--   `DELETE /api/items/<id>`: Delete an item.
--   `DELETE /api/items/clear`: Delete ALL items (Manager only).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/items` | List all group items |
+| `POST` | `/api/items` | Add item (auto-triggers AI pricing) |
+| `PUT` | `/api/items/<id>` | Update status (Manager) or quantity |
+| `DELETE` | `/api/items/<id>` | Delete item (Manager or owner) |
+| `DELETE` | `/api/items/clear` | Clear all items (Manager only) |
 
 ### Group Management
--   `GET /api/groups/members`: List all group members.
--   `PUT /api/groups/members/<id>`: Promote/Demote a member (Manager only).
-    -   Body: `{ "role": "MANAGER" }` or `{ "role": "MEMBER" }`
--   `DELETE /api/groups/members/<id>`: Remove a member from the group.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/groups/members` | List group members |
+| `PUT` | `/api/groups/members/<id>` | Change member role |
+| `DELETE` | `/api/groups/members/<id>` | Remove member (Manager only) |
 
 ### Health & Metrics
--   `GET /health`: Service health check (Kubernetes/Docker probe).
--   `GET /metrics`: Prometheus metrics endpoint (Port 8081).
 
-## Troubleshooting
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health` | Health check (K8s/Docker probe) |
+| `GET` | `:8081/metrics` | Prometheus metrics |
 
-### Common Issues
+## Observability
 
-1.  **"Connection Refused" to Backend**
-    -   Ensure Docker containers are running: `docker-compose ps`
-    -   Check logs: `docker-compose logs -f smartcart`
+### Prometheus Metrics
 
-2.  **OpenAI Errors / Price calculation fails**
-    -   Verify `OPENAI_API_KEY` is set correctly in `.env`.
-    -   Check if your API quota is exceeded.
+| Metric | Type | Description |
+|---|---|---|
+| `http_requests_total` | Counter | Total HTTP requests (method, endpoint, status) |
+| `http_request_duration_seconds` | Histogram | Request latency (method, endpoint) |
+| `db_connections_active` | Gauge | Active MongoDB connections |
+| `application_start_time_seconds` | Gauge | App start timestamp |
+| `auth_events_total` | Counter | Auth events (event, status) |
+| `items_total` | Gauge | Total items in database |
+| `ai_estimations_total` | Counter | Total AI price estimations |
+| `ai_estimation_duration_seconds` | Histogram | AI estimation latency (status) |
+| `ai_errors_total` | Counter | AI pricing errors |
 
-3.  **Database Connection Failed**
-    -   The backend waits for MongoDB to start. If it fails repeatedly, try restarting the database:
-        ```bash
-        docker-compose restart mongodb
-        ```
-    -   Ensure permissions on the `mongodb_data` volume are correct (try `docker-compose down -v` to reset if it's a dev environment).
+### Logging
 
-4.  **Changes not reflecting**
-    -   If you edited code, you must rebuild the containers:
-        ```bash
-        docker-compose up --build -d
-        ```
+Structured JSON logs with trace IDs, user context, and request metadata. Collected by Fluent Bit and shipped to Elasticsearch with Kibana dashboards.
+
+## Related Repositories
+
+- [SmartCart-Terraform](https://gitlab.com/arielgabai/smartcart-terraform) -- AWS EKS infrastructure (VPC, EKS, CloudFront CDN, Cloudflare DNS)
+- [SmartCart-GitOps](https://gitlab.com/arielgabai/smartcart-gitops) -- ArgoCD application manifests and Helm chart
 
 ## License
 
-This project is licensed under the MIT License.
+MIT
