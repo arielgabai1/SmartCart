@@ -16,7 +16,7 @@ env:
 
 jobs:
 
-  build:
+  Build:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -37,7 +37,7 @@ jobs:
           path: /tmp/image.tar
           retention-days: 1
 
-  security:
+  Security:
     needs: Build
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -94,9 +94,9 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-  unit-tests:
+  Unit-Tests:
     runs-on: ubuntu-latest
-    needs: build
+    needs: Build
     timeout-minutes: 5
 
     steps:
@@ -120,9 +120,9 @@ jobs:
           echo '### Unit Tests' >> $GITHUB_STEP_SUMMARY
           echo 'pytest with coverage completed' >> $GITHUB_STEP_SUMMARY
 
-  integration-tests:
+  Integration-E2E-Tests:
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: Unit-Tests
     timeout-minutes: 5
     env:
       MONGO_INITDB_ROOT_USERNAME: root
