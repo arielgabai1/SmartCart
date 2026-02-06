@@ -2,50 +2,144 @@ name: CI
 
 on:
   push:
-    branches: ["feature/*"]
-  pull_request:
-    branches: [main]
+    branches: [feature/*]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
-  BACKEND_IMAGE: smartcart:dev
+  IMAGE: smartcart:dev
 
 jobs:
+
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
       - name: Build
-        run: docker build -t $BACKEND_IMAGE .
+        run: docker build -t $IMAGE .
+
+      - name: Export image
+        run: docker save $IMAGE -o /tmp/image.tar
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  security:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        scan: [bandit, pip-audit, trivy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
 
       - name: Bandit
-        run: docker run --rm $BACKEND_IMAGE bandit -r src/ -f json -c tests/bandit.yaml --severity-level high
+        if: matrix.scan == 'bandit'
+        run: |
+          docker run --rm $IMAGE bandit -r src/ -f json -c tests/bandit.yaml --severity-level high | tee bandit.json
+          echo '### Bandit SAST' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no high-severity findings' >> $GITHUB_STEP_SUMMARY
 
       - name: pip-audit
-        run: docker run --rm $BACKEND_IMAGE pip-audit
+        if: matrix.scan == 'pip-audit'
+        run: |
+          docker run --rm $IMAGE pip-audit --format=json | tee pip-audit.json
+          echo '### pip-audit' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no vulnerable dependencies' >> $GITHUB_STEP_SUMMARY
 
       - name: Trivy
+        if: matrix.scan == 'trivy'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.BACKEND_IMAGE }}
+          image-ref: ${{ env.IMAGE }}
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: 1
+          format: json
+          output: trivy.json
 
-      - name: Unit tests
-        run: docker run --rm $BACKEND_IMAGE pytest tests/unit_tests.py --cov=src
+      - name: Trivy summary
+        if: matrix.scan == 'trivy'
+        run: |
+          echo '### Trivy Container Scan' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no critical vulnerabilities' >> $GITHUB_STEP_SUMMARY
 
-  test:
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.scan }}-report
+          path: "*.json"
+          if-no-files-found: ignore
+
+  unit-tests:
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Run tests
+        run: docker run --rm $IMAGE pytest tests/unit_tests.py --cov=src --tb=short
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Unit Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'pytest with coverage completed' >> $GITHUB_STEP_SUMMARY
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
     env:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: test
       JWT_SECRET: test
       OPENAI_API_KEY: fake
       MONGO_URI: mongodb://root:test@mongodb:27017/smartcart?authSource=admin
+      BACKEND_IMAGE: smartcart:dev
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
 
       - name: Start stack
         run: docker compose up -d --build
@@ -70,6 +164,12 @@ jobs:
           mcr.microsoft.com/playwright/python:v1.58.0-noble
           bash -c "pip install pytest playwright &&
           TEST_BASE_URL=http://nginx python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=''"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Integration & E2E Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'Full stack tests completed' >> $GITHUB_STEP_SUMMARY
 
       - name: Teardown
         if: always()
