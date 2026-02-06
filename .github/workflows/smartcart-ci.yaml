@@ -12,7 +12,7 @@ permissions:
   contents: read 
 
 env:
-  IMAGE: smartcart:dev
+  IMAGE: smartcart:gha
 
 jobs:
 
@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 5
 
     steps:
-
       - uses: actions/checkout@v6
 
       - name: Build image
@@ -59,14 +58,14 @@ jobs:
         if: matrix.scan == 'bandit'
         run: |
           docker run --rm $IMAGE bandit -r src/ -f json -c tests/bandit.yaml --severity-level high | tee bandit.json
-          echo '### Bandit SAST' >> $GITHUB_STEP_SUMMARY
+          echo 'Bandit SAST' >> $GITHUB_STEP_SUMMARY
           echo 'Passed - no high-severity findings' >> $GITHUB_STEP_SUMMARY
 
       - name: pip-audit
         if: matrix.scan == 'pip-audit'
         run: |
           docker run --rm $IMAGE pip-audit --format=json | tee pip-audit.json
-          echo '### pip-audit' >> $GITHUB_STEP_SUMMARY
+          echo 'pip-audit' >> $GITHUB_STEP_SUMMARY
           echo 'Passed - no vulnerable dependencies' >> $GITHUB_STEP_SUMMARY
 
       - name: Trivy
@@ -83,7 +82,7 @@ jobs:
       - name: Trivy summary
         if: matrix.scan == 'trivy'
         run: |
-          echo '### Trivy Container Scan' >> $GITHUB_STEP_SUMMARY
+          echo 'Trivy Container Scan' >> $GITHUB_STEP_SUMMARY
           echo 'Passed - no critical vulnerabilities' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload report
@@ -114,7 +113,7 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo '### Unit Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'Unit Tests' >> $GITHUB_STEP_SUMMARY
           echo 'pytest with coverage completed' >> $GITHUB_STEP_SUMMARY
 
   Integration-E2E-Tests:
@@ -124,10 +123,10 @@ jobs:
     env:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: test
-      JWT_SECRET: test
+      JWT_SECRET: testing-secret
       OPENAI_API_KEY: testing-key
       MONGO_URI: mongodb://root:test@mongodb:27017/smartcart?authSource=admin
-      BACKEND_IMAGE: smartcart:dev 
+      BACKEND_IMAGE: smartcart:gha 
 
     steps:
       - uses: actions/checkout@v6
@@ -141,7 +140,7 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/image.tar
 
-      - name: Start stack
+      - name: Start Docker Compose
         run: docker compose up -d --build
 
       - name: Health Check
@@ -168,5 +167,5 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo '### Integration & E2E Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'Integration & E2E Tests' >> $GITHUB_STEP_SUMMARY
           echo 'Full stack tests completed' >> $GITHUB_STEP_SUMMARY
