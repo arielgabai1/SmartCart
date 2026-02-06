@@ -147,12 +147,10 @@ pipeline {
                 }
                 stage('Publish to ECR') {
                     steps {
-                        withAWS(region: env.AWS_REGION) {
-                            ecrLogin()
-                            script {
-                                docker.image(env.BACKEND_IMAGE).push(env.VERSION)
-                                docker.image(env.BACKEND_IMAGE).push('latest')
-                            }
+                        sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 043187663485.dkr.ecr.ap-south-1.amazonaws.com'
+                        script {
+                            docker.image(env.BACKEND_IMAGE).push(env.VERSION)
+                            docker.image(env.BACKEND_IMAGE).push('latest')
                         }
                     }
                 }
