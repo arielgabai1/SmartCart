@@ -101,12 +101,12 @@ pipeline {
         stage('Integration Tests') {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
-                sh "BACKEND_IMAGE=${env.IMAGE} docker compose up -d --build"
+                sh "BACKEND_IMAGE=${env.IMAGE} docker compose -f dev/docker-compose.yml up -d --build"
 
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            sh(script: 'docker compose exec -T smartcart curl -sf http://nginx/api/health', returnStatus: true) == 0
+                            sh(script: 'docker compose -f dev/docker-compose.yml exec -T smartcart curl -sf http://nginx/api/health', returnStatus: true) == 0
                         }
                     }
                 }
@@ -178,7 +178,7 @@ pipeline {
                 stage('Deploy Static to S3') {
                     steps {
                         withAWS(region: env.AWS_REGION) {
-                            sh "aws s3 sync frontend/static/ s3://${S3_BUCKET}/ --delete"
+                            sh "aws s3 sync static/ s3://${S3_BUCKET}/ --delete"
                             cfInvalidate(distribution: cfDistId(), paths: ['/*'])
                         }
                     }
@@ -190,7 +190,7 @@ pipeline {
 
     post {
         always {
-            sh 'docker compose down -v --remove-orphans || true'
+            sh 'docker compose -f dev/docker-compose.yml down -v --remove-orphans || true'
             sh 'docker system prune -af --volumes || true'
             cleanWs()
             script {

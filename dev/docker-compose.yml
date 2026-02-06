@@ -2,7 +2,8 @@ name: smartcart
 services:
   nginx:
     build:
-      context: frontend/
+      context: ..
+      dockerfile: dev/Dockerfile
     ports:
       - "80:80"
     depends_on:
@@ -14,7 +15,7 @@ services:
   smartcart:
     image: ${BACKEND_IMAGE}
     build:
-      context: .
+      context: ..
     ports:
       - "8081:8081" # /metrics port
     environment:
