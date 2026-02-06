@@ -1,0 +1,188 @@
+name: SmartCart
+
+on:
+  push:
+    branches: [feature/*]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read 
+
+env:
+  IMAGE: smartcart:gha
+
+jobs:
+
+  Build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image
+        run: docker build -t $IMAGE .
+
+      - name: Export image
+        run: docker save $IMAGE -o /tmp/image.tar
+
+      - name: Upload image
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  Security:
+    needs: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        scan: [bandit, pip-audit, trivy]
+
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Bandit
+        if: matrix.scan == 'bandit'
+        run: |
+          docker run --rm $IMAGE bandit -r src/ -f json -c tests/bandit.yaml --severity-level high | tee bandit.json
+          echo 'Bandit SAST' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no high-severity findings' >> $GITHUB_STEP_SUMMARY
+
+      - name: pip-audit
+        if: matrix.scan == 'pip-audit'
+        run: |
+          docker run --rm $IMAGE pip-audit --format=json | tee pip-audit.json
+          echo 'pip-audit' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no vulnerable dependencies' >> $GITHUB_STEP_SUMMARY
+
+      - name: Trivy
+        if: matrix.scan == 'trivy'
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.IMAGE }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+          format: json
+          output: trivy.json
+
+      - name: Trivy summary
+        if: matrix.scan == 'trivy'
+        run: |
+          echo 'Trivy Container Scan' >> $GITHUB_STEP_SUMMARY
+          echo 'Passed - no critical vulnerabilities' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.scan }}-report
+          path: "*.json"
+          if-no-files-found: ignore
+
+  Unit-Tests:
+    runs-on: ubuntu-latest
+    needs: Build
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Run tests
+        run: docker run --rm $IMAGE pytest tests/unit_tests.py --cov=src --tb=short
+
+      - name: Summary
+        if: always()
+        run: |
+          echo 'Unit Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'pytest with coverage completed' >> $GITHUB_STEP_SUMMARY
+
+  Integration-E2E-Tests:
+    runs-on: ubuntu-latest
+    needs: Unit-Tests
+    timeout-minutes: 5
+    env:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: test
+      JWT_SECRET: testing-secret
+      OPENAI_API_KEY: testing-key
+      MONGO_URI: mongodb://root:test@mongodb:27017/smartcart?authSource=admin
+      BACKEND_IMAGE: smartcart:gha 
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download image
+        uses: actions/download-artifact@v5
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/image.tar
+
+      - name: Start Docker Compose
+        run: docker compose up -d --build
+
+      - name: Health Check
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T smartcart curl -sf http://nginx/api/health && exit 0
+            sleep 2
+          done
+          docker compose logs && exit 1
+
+
+      - name: Integration tests
+        run: |
+          docker run --rm --network smartcart_frontend-net $BACKEND_IMAGE pytest tests/integration_tests.py --no-cov
+
+      - name: E2E tests
+        run: >
+          docker run --rm --network smartcart_frontend-net
+          -v ${{ github.workspace }}:/workspace -w /workspace
+          mcr.microsoft.com/playwright/python:v1.58.0-noble
+          bash -c "pip install pytest playwright &&
+          TEST_BASE_URL=http://nginx python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=''"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo 'Integration & E2E Tests' >> $GITHUB_STEP_SUMMARY
+          echo 'Full stack tests completed' >> $GITHUB_STEP_SUMMARY
+
+  Notify:
+    runs-on: ubuntu-latest
+    needs: [Security, Integration-E2E-Tests]
+    if: always()
+    timeout-minutes: 1
+    steps:
+    
+      - name: Slack notification
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "SmartCart CI - ${{ contains(needs.*.result, 'failure') && 'FAILED' || 'PASSED' }} (${{ github.ref_name }})"
+            }
