@@ -115,7 +115,7 @@ pipeline {
                 }
 
                 script {
-                    withAppContainer('--network smartcart_nginx-net') {
+                    withAppContainer('--network smartcart_frontend-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
                     }
                 }
@@ -126,7 +126,7 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image('mcr.microsoft.com/playwright/python:v1.58.0-noble').inside('--network smartcart_nginx-net') {
+                    docker.image('mcr.microsoft.com/playwright/python:v1.58.0-noble').inside('--network smartcart_frontend-net') {
                         sh 'pip install pytest playwright && TEST_BASE_URL=http://nginx python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=""'
                     }
                 }

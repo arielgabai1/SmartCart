@@ -60,12 +60,12 @@ jobs:
 
       - name: Integration tests
         run: >
-          docker run --rm --network smartcart_nginx-net
+          docker run --rm --network smartcart_frontend-net
           $BACKEND_IMAGE pytest tests/integration_tests.py --no-cov
 
       - name: E2E tests
         run: >
-          docker run --rm --network smartcart_nginx-net
+          docker run --rm --network smartcart_frontend-net
           -v ${{ github.workspace }}:/workspace -w /workspace
           mcr.microsoft.com/playwright/python:v1.58.0-noble
           bash -c "pip install pytest playwright &&
