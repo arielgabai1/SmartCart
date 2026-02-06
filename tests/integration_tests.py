@@ -7,8 +7,8 @@ import requests
 import uuid
 import os
 
-# Base URL for API calls - defaults to frontend for CI, override with TEST_BASE_URL for local
-BASE_URL = os.getenv('TEST_BASE_URL', 'http://frontend/api')
+# Base URL for API calls - defaults to nginx for CI, override with TEST_BASE_URL for local
+BASE_URL = os.getenv('TEST_BASE_URL', 'http://nginx/api')
 
 def unique_email():
     """Generate unique email for testing."""

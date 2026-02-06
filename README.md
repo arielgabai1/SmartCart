@@ -203,7 +203,7 @@ The backend exposes a RESTful API. All endpoints (except Auth/Health) require a 
 
 1.  **"Connection Refused" to Backend**
     -   Ensure Docker containers are running: `docker-compose ps`
-    -   Check logs: `docker-compose logs -f backend`
+    -   Check logs: `docker-compose logs -f smartcart`
 
 2.  **OpenAI Errors / Price calculation fails**
     -   Verify `OPENAI_API_KEY` is set correctly in `.env`.
@@ -212,7 +212,7 @@ The backend exposes a RESTful API. All endpoints (except Auth/Health) require a 
 3.  **Database Connection Failed**
     -   The backend waits for MongoDB to start. If it fails repeatedly, try restarting the database:
         ```bash
-        docker-compose restart database
+        docker-compose restart mongodb
         ```
     -   Ensure permissions on the `mongodb_data` volume are correct (try `docker-compose down -v` to reset if it's a dev environment).
 

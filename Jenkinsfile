@@ -109,13 +109,13 @@ pipeline {
                 timeout(time: 2, unit: 'MINUTES') {
                     waitUntil {
                         script {
-                            sh(script: 'docker compose exec -T backend curl -sf http://frontend/api/health', returnStatus: true) == 0
+                            sh(script: 'docker compose exec -T smartcart curl -sf http://nginx/api/health', returnStatus: true) == 0
                         }
                     }
                 }
 
                 script {
-                    withAppContainer('--network smartcart_frontend-net') {
+                    withAppContainer('--network smartcart_nginx-net') {
                         sh 'pytest tests/integration_tests.py --no-cov'
                     }
                 }
@@ -126,8 +126,8 @@ pipeline {
             when { anyOf { branch 'main'; branch 'feature/*' } }
             steps {
                 script {
-                    docker.image('mcr.microsoft.com/playwright/python:v1.58.0-noble').inside('--network smartcart_frontend-net') {
-                        sh 'pip install pytest playwright && TEST_BASE_URL=http://frontend python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=""'
+                    docker.image('mcr.microsoft.com/playwright/python:v1.58.0-noble').inside('--network smartcart_nginx-net') {
+                        sh 'pip install pytest playwright && TEST_BASE_URL=http://nginx python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=""'
                     }
                 }
             }

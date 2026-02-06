@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: ["feature/*"]
+  pull_request:
+    branches: [main]
+
+env:
+  BACKEND_IMAGE: smartcart:dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -t $BACKEND_IMAGE .
+
+      - name: Bandit
+        run: docker run --rm $BACKEND_IMAGE bandit -r src/ -f json -c tests/bandit.yaml --severity-level high
+
+      - name: pip-audit
+        run: docker run --rm $BACKEND_IMAGE pip-audit
+
+      - name: Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Unit tests
+        run: docker run --rm $BACKEND_IMAGE pytest tests/unit_tests.py --cov=src
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: test
+      JWT_SECRET: test
+      OPENAI_API_KEY: fake
+      MONGO_URI: mongodb://root:test@mongodb:27017/smartcart?authSource=admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        run: docker compose up -d --build
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T smartcart curl -sf http://nginx/api/health && exit 0
+            sleep 2
+          done
+          docker compose logs && exit 1
+
+      - name: Integration tests
+        run: >
+          docker run --rm --network smartcart_nginx-net
+          $BACKEND_IMAGE pytest tests/integration_tests.py --no-cov
+
+      - name: E2E tests
+        run: >
+          docker run --rm --network smartcart_nginx-net
+          -v ${{ github.workspace }}:/workspace -w /workspace
+          mcr.microsoft.com/playwright/python:v1.58.0-noble
+          bash -c "pip install pytest playwright &&
+          TEST_BASE_URL=http://nginx python -m pytest tests/e2e_tests.py -v --tb=short -x -o addopts=''"
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

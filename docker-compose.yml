@@ -1,39 +1,36 @@
 name: smartcart
 services:
-  frontend:
+  nginx:
     build:
       context: frontend/
-    container_name: nginx
     ports:
       - "80:80"
     depends_on:
-      - backend
+      - smartcart
     restart: on-failure
     networks:
       - frontend-net
 
-  backend:
+  smartcart:
     image: ${BACKEND_IMAGE}
     build:
       context: .
-    container_name: SmartCart
     ports:
-      - "8081:8081"
+      - "8081:8081" # /metrics port
     environment:
       - GUNICORN=true
       - JWT_SECRET=${JWT_SECRET}
       - MONGO_URI=${MONGO_URI}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
-      - database
+      - mongodb
     restart: on-failure
     networks:
     - frontend-net
     - backend-net
 
-  database:
+  mongodb:
     image: mongo:8.2
-    container_name: mongodb
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}

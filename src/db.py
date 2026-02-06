@@ -30,7 +30,7 @@ def get_db_connection(max_retries=5, retry_delay=2):
     Raises:
         ConnectionFailure: If connection fails after max_retries
     """
-    mongo_uri = os.getenv('MONGO_URI', 'mongodb://database:27017/smartcart')
+    mongo_uri = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/smartcart')
 
     for attempt in range(1, max_retries + 1):
         try:
