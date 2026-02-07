@@ -43,14 +43,7 @@ SmartCart lets families and groups manage shared grocery lists with role-based a
 
 ### Local Development
 
-```mermaid
-graph LR
-    Browser -->|:80| Nginx
-    Nginx -->|/api/| Flask[:5000]
-    Nginx -->|/| Static[Static Files]
-    Flask --> MongoDB[:27017]
-    Prometheus -.->|scrape :8081| Flask
-```
+![Local Development -- 3-Tier Architecture](Diagrams/3Tier.png)
 
 ### Production
 
@@ -229,29 +222,13 @@ docker run --rm --network smartcart_frontend-net smartcart pytest tests/integrat
 
 ## CI/CD
 
-### Jenkins (main branch)
+### Jenkins (main + feature branches)
 
-The primary pipeline runs on `main` and `feature/*` branches:
-
-1. **Version Calculation** -- auto-increment patch from latest git tag
-2. **Build** -- Docker image from `python:3.14.2-alpine`
-3. **Security** (parallel) -- Bandit SAST, pip-audit, Trivy container scan
-4. **Unit Tests** -- pytest with coverage
-5. **SonarCloud** -- static analysis
-6. **Integration Tests** -- full Docker Compose stack
-7. **E2E Tests** -- Playwright browser tests
-8. **Tag & Publish** (parallel) -- git tag + ECR push
-9. **Deploy** (parallel) -- GitOps values update + S3 sync + CloudFront invalidation
+![Jenkins CI/CD Pipeline](Diagrams/Jenkins-CICD.png)
 
 ### GitHub Actions (feature branches)
 
-Runs on `feature/*` pushes:
-
-1. **Build** -- Docker build + artifact upload
-2. **Security** (matrix) -- Bandit, pip-audit, Trivy in parallel
-3. **Unit Tests** -- pytest with coverage
-4. **Integration + E2E** -- Docker Compose stack with Playwright
-5. **Notify** -- Slack webhook
+![GitHub Actions CI Pipeline](Diagrams/GHA-CI.png)
 
 ## API Reference
 
