@@ -35,7 +35,7 @@ SmartCart lets families and groups manage shared grocery lists with role-based a
 <p align="center"><em>Manager dashboard -- shopping list, stats bar, add item form</em></p>
 
 <p align="center">
-  <img src="Screenshots/App/group.png" alt="Group Management" width="500">
+  <img src="Screenshots/App/group.png" alt="Group Management" width="800">
 </p>
 <p align="center"><em>Group management sidebar -- invite code, member roles, promote/remove</em></p>
 
