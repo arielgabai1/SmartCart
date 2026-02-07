@@ -29,6 +29,16 @@ SmartCart lets families and groups manage shared grocery lists with role-based a
 - **CI/CD** -- Jenkins (main) + GitHub Actions (feature branches), security scanning pipeline
 - **Auto-scaling** -- HPA (1-3 pods) + Karpenter for node provisioning
 
+<p align="center">
+  <img src="../Screenshots/App/homepage.png" alt="SmartCart Dashboard" width="800">
+</p>
+<p align="center"><em>Manager dashboard -- shopping list, stats bar, add item form</em></p>
+
+<p align="center">
+  <img src="../Screenshots/App/group.png" alt="Group Management" width="500">
+</p>
+<p align="center"><em>Group management sidebar -- invite code, member roles, promote/remove</em></p>
+
 ## Architecture
 
 ### Local Development
@@ -114,6 +124,21 @@ SmartCart/
 ├── pytest.ini
 └── sonar-project.properties
 ```
+
+<details>
+<summary>Authentication screens</summary>
+
+<p align="center">
+  <img src="../Screenshots/App/login.png" alt="Login" width="400">
+</p>
+<p align="center"><em>Login page</em></p>
+
+<p align="center">
+  <img src="../Screenshots/App/signup-create.png" alt="Register - New Group" width="400">
+</p>
+<p align="center"><em>Registration -- create a new group</em></p>
+
+</details>
 
 ## Getting Started
 
@@ -285,6 +310,16 @@ All endpoints except auth and health require `Authorization: Bearer <token>`.
 ### Logging
 
 Structured JSON logs with trace IDs, user context, and request metadata. Collected by Fluent Bit and shipped to Elasticsearch with Kibana dashboards.
+
+<p align="center">
+  <img src="../Screenshots/Dashboards/Grafana-SmartCart.png" alt="Grafana SmartCart Dashboard" width="800">
+</p>
+<p align="center"><em>Grafana -- application metrics (health, user impact, AI estimation)</em></p>
+
+<p align="center">
+  <img src="../Screenshots/Dashboards/Kibana.png" alt="Kibana Dashboard" width="800">
+</p>
+<p align="center"><em>Kibana -- log analytics (volume, HTTP codes, errors, recent logs)</em></p>
 
 ## Related Repositories
 
