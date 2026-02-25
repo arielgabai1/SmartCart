@@ -48,27 +48,38 @@ pipeline {
                 stage('Bandit') {
                     steps {
                         script {
-                            withAppContainer {
-                                sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
+                            try {
+                                withAppContainer {
+                                    sh 'bandit -r src/ -f json -o bandit.json -c tests/bandit.yaml --severity-level high'
+                                }
+                            } finally {
+                                archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
                             }
                         }
-                        archiveArtifacts artifacts: 'bandit.json', allowEmptyArchive: true
                     }
                 }
                 stage('pip-audit') {
                     steps {
                         script {
-                            withAppContainer {
-                                sh 'pip-audit --format=json -o pip-audit.json'
+                            try {
+                                withAppContainer {
+                                    sh 'pip-audit --format=json -o pip-audit.json'
+                                }
+                            } finally {
+                                archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
                             }
                         }
-                        archiveArtifacts artifacts: 'pip-audit.json', allowEmptyArchive: true
                     }
                 }
                 stage('Trivy') {
                     steps {
-                        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --format json ${env.IMAGE} > trivy.json"
-                        archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
+                        script {
+                            try {
+                                sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity CRITICAL --ignore-unfixed --exit-code 1 --format json ${env.IMAGE} > trivy.json"
+                            } finally {
+                                archiveArtifacts artifacts: 'trivy.json', allowEmptyArchive: true
+                            }
+                        }
                     }
                 }
             }
