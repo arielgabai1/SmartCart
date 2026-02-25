@@ -175,7 +175,8 @@ pipeline {
                         }
                     }
                 }
-                stage('Deploy Static to S3') {
+                stage('Deploy Static Files to S3') {
+                    when { changeset "static/**" }
                     steps {
                         withAWS(region: env.AWS_REGION) {
                             sh "aws s3 sync static/ s3://${S3_BUCKET}/ --delete"
