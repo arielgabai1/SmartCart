@@ -20,30 +20,30 @@ SmartCart lets families and groups manage shared grocery lists with role-based a
 
 ## Features
 
-- **Multi-tenancy** -- groups isolated by join codes, all data scoped to `group_id`
-- **Role-based access** -- MANAGER (full control, approve/reject) and MEMBER (submit items)
-- **AI price estimation** -- OpenAI gpt-4o-mini estimates Israeli market prices in NIS
-- **Production infrastructure** -- EKS cluster with CloudFront CDN serving static files from S3
-- **GitOps** -- ArgoCD with sync-waves (ESO -> ClusterSecretStore -> SmartCart)
-- **Observability** -- Prometheus + Grafana dashboards, EFK stack for log aggregation
-- **CI/CD** -- Jenkins (main) + GitHub Actions (feature branches), security scanning pipeline
-- **Auto-scaling** -- HPA (1-3 pods) + Karpenter for node provisioning
+- **Multi-tenancy**: groups isolated by join codes, all data scoped to `group_id`
+- **Role-based access**: MANAGER (full control, approve/reject) and MEMBER (submit items)
+- **AI price estimation**: OpenAI gpt-4o-mini estimates Israeli market prices in NIS
+- **Production infrastructure**: EKS cluster with CloudFront CDN serving static files from S3
+- **GitOps**: ArgoCD with sync-waves (ESO -> ClusterSecretStore -> SmartCart)
+- **Observability**: Prometheus + Grafana dashboards, EFK stack for log aggregation
+- **CI/CD**: Jenkins (main) + GitHub Actions (feature branches), security scanning pipeline
+- **Auto-scaling**: HPA (1-3 pods) + Karpenter for node provisioning
 
 <p align="center">
   <img src="Screenshots/App/homepage.png" alt="SmartCart Dashboard" width="800">
 </p>
-<p align="center"><em>Manager dashboard -- shopping list, stats bar, add item form</em></p>
+<p align="center"><em>Manager dashboard - shopping list, stats bar, add item form</em></p>
 
 <p align="center">
   <img src="Screenshots/App/group.png" alt="Group Management" width="800">
 </p>
-<p align="center"><em>Group management sidebar -- invite code, member roles, promote/remove</em></p>
+<p align="center"><em>Group management sidebar - invite code, member roles, promote/remove</em></p>
 
 ## Architecture
 
 ### Local Development
 
-![Local Development -- 3-Tier Architecture](Diagrams/3Tier.png)
+![Local Development - 3-Tier Architecture](Diagrams/3Tier.png)
 
 ### Production
 
@@ -129,7 +129,7 @@ SmartCart/
 <p align="center">
   <img src="Screenshots/App/signup-create.png" alt="Register - New Group" width="400">
 </p>
-<p align="center"><em>Registration -- create a new group</em></p>
+<p align="center"><em>Registration - create a new group</em></p>
 
 </details>
 
@@ -211,7 +211,7 @@ python src/app.py
 # Unit tests
 docker run --rm smartcart pytest tests/unit_tests.py --cov=src --tb=short
 
-# Full stack (integration + E2E) -- requires running compose stack
+# Full stack (integration + E2E) - requires running compose stack
 docker compose -f dev/docker-compose.yml up -d --build
 docker run --rm --network smartcart_frontend-net smartcart pytest tests/integration_tests.py --no-cov
 ```
@@ -291,17 +291,17 @@ Structured JSON logs with trace IDs, user context, and request metadata. Collect
 <p align="center">
   <img src="Screenshots/Dashboards/Grafana-SmartCart.png" alt="Grafana SmartCart Dashboard" width="800">
 </p>
-<p align="center"><em>Grafana -- application metrics (health, user impact, AI estimation)</em></p>
+<p align="center"><em>Grafana - application metrics (health, user impact, AI estimation)</em></p>
 
 <p align="center">
   <img src="Screenshots/Dashboards/Kibana.png" alt="Kibana Dashboard" width="800">
 </p>
-<p align="center"><em>Kibana -- log analytics (volume, HTTP codes, errors, recent logs)</em></p>
+<p align="center"><em>Kibana - log analytics (volume, HTTP codes, errors, recent logs)</em></p>
 
 ## Related Repositories
 
-- [SmartCart-Terraform](https://gitlab.com/arielgabai/smartcart-terraform) -- AWS EKS infrastructure (VPC, EKS, CloudFront CDN, Cloudflare DNS)
-- [SmartCart-GitOps](https://gitlab.com/arielgabai/smartcart-gitops) -- ArgoCD application manifests and Helm chart
+- [SmartCart-Terraform](https://gitlab.com/arielgabai/smartcart-terraform): AWS EKS infrastructure (VPC, EKS, CloudFront CDN, Cloudflare DNS)
+- [SmartCart-GitOps](https://gitlab.com/arielgabai/smartcart-gitops): ArgoCD application manifests and Helm chart
 
 ## License
 
